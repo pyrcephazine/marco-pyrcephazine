@@ -57,6 +57,7 @@
 #define KEY_GENERAL_ICON_SIZE "icon-size"
 #define KEY_GENERAL_ALT_TAB_MAX_COLUMNS "alt-tab-max-columns"
 #define KEY_GENERAL_ALT_TAB_EXPAND_TO_FIT_TITLE "alt-tab-expand-to-fit-title"
+#define KEY_GENERAL_CHANGE_SIZE_RESOLUTIONS "change-size-resolutions"
 
 #define KEY_COMMAND_SCHEMA "org.mate.Marco.keybinding-commands"
 #define KEY_COMMAND_PREFIX "command-"
@@ -2429,6 +2430,99 @@ meta_prefs_show_tab_border(void)
     return show_tab_border;
 }
 
+char**
+meta_prefs_get_change_size_resolutions (void)
+{
+  return g_settings_get_strv (settings_general,
+                              KEY_GENERAL_CHANGE_SIZE_RESOLUTIONS);
+}
+
+gboolean
+meta_prefs_parse_change_size_resolution (const char *resolution,
+                                         int        *width,
+                                         int        *height)
+{
+  char *end;
+  guint64 parsed_width;
+  guint64 parsed_height;
+
+  g_return_val_if_fail (width != NULL, FALSE);
+  g_return_val_if_fail (height != NULL, FALSE);
+
+  if (resolution == NULL || *resolution == '\0')
+    return FALSE;
+
+  if (!g_ascii_isdigit (*resolution))
+    return FALSE;
+
+  parsed_width = g_ascii_strtoull (resolution, &end, 10);
+  if (end == resolution || *end != 'x')
+    return FALSE;
+
+  resolution = end + 1;
+  if (!g_ascii_isdigit (*resolution))
+    return FALSE;
+
+  parsed_height = g_ascii_strtoull (resolution, &end, 10);
+  if (end == resolution || *end != '\0')
+    return FALSE;
+
+  if (parsed_width == 0 || parsed_height == 0 ||
+      parsed_width > G_MAXINT || parsed_height > G_MAXINT)
+    return FALSE;
+
+  *width = parsed_width;
+  *height = parsed_height;
+
+  return TRUE;
+}
+
+gboolean
+meta_prefs_get_change_size_resolution (int  index,
+                                       int *width,
+                                       int *height)
+{
+  char **resolutions;
+  int valid_index;
+  int i;
+  gboolean found;
+
+  g_return_val_if_fail (width != NULL, FALSE);
+  g_return_val_if_fail (height != NULL, FALSE);
+
+  if (index < 0)
+    return FALSE;
+
+  resolutions = meta_prefs_get_change_size_resolutions ();
+  valid_index = 0;
+  found = FALSE;
+
+  for (i = 0; resolutions[i] != NULL; i++)
+    {
+      int parsed_width;
+      int parsed_height;
+
+      if (!meta_prefs_parse_change_size_resolution (resolutions[i],
+                                                    &parsed_width,
+                                                    &parsed_height))
+        continue;
+
+      if (valid_index == index)
+        {
+          *width = parsed_width;
+          *height = parsed_height;
+          found = TRUE;
+          break;
+        }
+
+      valid_index++;
+    }
+
+  g_strfreev (resolutions);
+
+  return found;
+}
+
 gboolean
 meta_prefs_get_force_fullscreen (void)
 {
@@ -2469,4 +2563,3 @@ meta_prefs_set_force_fullscreen (gboolean whether)
 {
   force_fullscreen = whether;
 }
-

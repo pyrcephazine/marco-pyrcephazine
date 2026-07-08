@@ -32,6 +32,7 @@
 #include "util.h"
 #include "core.h"
 #include "metaaccellabel.h"
+#include "prefs.h"
 #include "ui.h"
 
 typedef struct _MenuItem MenuItem;
@@ -44,6 +45,7 @@ typedef enum {
 	MENU_ITEM_CHECKBOX,
 	MENU_ITEM_RADIOBUTTON,
 	MENU_ITEM_WORKSPACE_LIST,
+	MENU_ITEM_CHANGE_SIZE_LIST,
 } MetaMenuItemType;
 
 struct _MenuItem {
@@ -76,6 +78,7 @@ static MenuItem menuitems[] = {
 	{META_MENU_OP_MOVE, MENU_ITEM_NORMAL, NULL, FALSE, N_("_Move") },
 	/* Translators: Translate this string the same way as you do in libwnck! */
 	{META_MENU_OP_RESIZE, MENU_ITEM_NORMAL, NULL, FALSE, N_("_Resize")},
+	{META_MENU_OP_CHANGE_SIZE, MENU_ITEM_CHANGE_SIZE_LIST, NULL, FALSE, NULL},
 	/* Translators: Translate this string the same way as you do in libwnck! */
 	{META_MENU_OP_RECOVER, MENU_ITEM_NORMAL, NULL, FALSE, N_("Move Titlebar On_screen")},
 	{META_MENU_OP_WORKSPACES, MENU_ITEM_SEPARATOR, NULL, FALSE, NULL}, /* separator */
@@ -293,6 +296,10 @@ static GtkWidget* menu_item_new(MenuItem* menuitem, int workspace_id)
 	{
 		return NULL;
 	}
+	else if (menuitem->type == MENU_ITEM_CHANGE_SIZE_LIST)
+	{
+		return NULL;
+	}
 	else
 	{
 		return gtk_separator_menu_item_new();
@@ -369,7 +376,79 @@ meta_window_menu_new   (MetaFrames         *frames,
               break;
             }
 
-          if (menuitem.type == MENU_ITEM_WORKSPACE_LIST)
+          if (menuitem.type == MENU_ITEM_CHANGE_SIZE_LIST)
+            {
+              GtkWidget *submenu;
+              char **resolutions;
+              int valid_index;
+              int j;
+
+              MenuItem change_size = {
+                META_MENU_OP_CHANGE_SIZE, MENU_ITEM_NORMAL,
+                NULL, FALSE,
+                N_("Change _size")
+              };
+
+              submenu = gtk_menu_new ();
+              resolutions = meta_prefs_get_change_size_resolutions ();
+              valid_index = 0;
+
+              g_assert (mi==NULL);
+              mi = menu_item_new (&change_size, -1);
+              gtk_menu_item_set_submenu (GTK_MENU_ITEM (mi), submenu);
+
+              for (j = 0; resolutions[j] != NULL; j++)
+                {
+                  int width;
+                  int height;
+                  MenuData *md;
+                  MenuItem sizeitem;
+                  GtkWidget *submi;
+
+                  if (!meta_prefs_parse_change_size_resolution (resolutions[j],
+                                                                &width,
+                                                                &height))
+                    continue;
+
+                  sizeitem.type = MENU_ITEM_NORMAL;
+                  sizeitem.op = META_MENU_OP_CHANGE_SIZE;
+                  sizeitem.label = resolutions[j];
+                  submi = menu_item_new (&sizeitem, -1);
+
+                  md = g_new (MenuData, 1);
+
+                  md->menu = menu;
+                  md->op = META_MENU_OP_CHANGE_SIZE;
+
+                  g_object_set_data (G_OBJECT (submi),
+                      "workspace",
+                      GINT_TO_POINTER (valid_index));
+
+                  g_signal_connect_data (G_OBJECT (submi),
+                      "activate",
+                      G_CALLBACK (activate_cb),
+                      md,
+                      (GClosureNotify) g_free, 0);
+
+                  gtk_menu_shell_append (GTK_MENU_SHELL (submenu), submi);
+
+                  gtk_widget_show (submi);
+                  valid_index++;
+                }
+
+              if (valid_index == 0)
+                {
+                  gtk_widget_destroy (mi);
+                  mi = NULL;
+                }
+              else if (insensitive & META_MENU_OP_CHANGE_SIZE)
+                {
+                  gtk_widget_set_sensitive (mi, FALSE);
+                }
+
+              g_strfreev (resolutions);
+            }
+          else if (menuitem.type == MENU_ITEM_WORKSPACE_LIST)
             {
               if (ops & META_MENU_OP_WORKSPACES)
                 {

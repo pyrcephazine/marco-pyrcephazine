@@ -143,6 +143,13 @@ gboolean    meta_prefs_get_center_new_windows  (void);
 gboolean    meta_prefs_get_force_fullscreen  (void);
 gboolean    meta_prefs_show_tab_border (void);
 gboolean    meta_prefs_is_in_skip_list (char *class);
+char**      meta_prefs_get_change_size_resolutions (void);
+gboolean    meta_prefs_parse_change_size_resolution (const char *resolution,
+                                                     int        *width,
+                                                     int        *height);
+gboolean    meta_prefs_get_change_size_resolution (int  index,
+                                                   int *width,
+                                                   int *height);
 
 /**
  * Sets whether the compositor is turned on.
@@ -264,4 +271,3 @@ gboolean           meta_prefs_bell_is_audible      (void);
 MetaVisualBellType meta_prefs_get_visual_bell_type (void);
 
 #endif
-

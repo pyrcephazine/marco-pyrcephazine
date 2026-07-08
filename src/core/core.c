@@ -632,6 +632,9 @@ meta_core_get_menu_accelerator (MetaMenuOp           menu_op,
     case META_MENU_OP_RESIZE:
       name = "begin-resize";
       break;
+    case META_MENU_OP_CHANGE_SIZE:
+      /* No keybinding for this one */
+      break;
     case META_MENU_OP_MOVE_LEFT:
       name = "move-to-workspace-left";
       break;
@@ -837,4 +840,3 @@ meta_invalidate_all_icons (void)
 
   g_slist_free (windows);
 }
-

@@ -6962,6 +6962,25 @@ menu_callback (MetaWindowMenu *menu,
                                      timestamp);
           break;
 
+        case META_MENU_OP_CHANGE_SIZE:
+          {
+            int width;
+            int height;
+
+            if (meta_prefs_get_change_size_resolution (workspace_index,
+                                                       &width,
+                                                       &height))
+              {
+                if (META_WINDOW_MAXIMIZED (window))
+                  meta_window_unmaximize (window,
+                                          META_MAXIMIZE_HORIZONTAL |
+                                          META_MAXIMIZE_VERTICAL);
+
+                meta_window_resize (window, TRUE, width, height);
+              }
+          }
+          break;
+
         case META_MENU_OP_RECOVER:
           meta_window_shove_titlebar_onscreen (window);
           break;
@@ -7019,7 +7038,9 @@ meta_window_show_menu (MetaWindow *window,
   ops = META_MENU_OP_NONE;
   insensitive = META_MENU_OP_NONE;
 
-  ops |= (META_MENU_OP_DELETE | META_MENU_OP_MINIMIZE | META_MENU_OP_MOVE | META_MENU_OP_RESIZE);
+  ops |= (META_MENU_OP_DELETE | META_MENU_OP_MINIMIZE |
+          META_MENU_OP_MOVE | META_MENU_OP_RESIZE |
+          META_MENU_OP_CHANGE_SIZE);
 
   if (!meta_window_titlebar_is_onscreen (window) &&
       window->type != META_WINDOW_DOCK &&
@@ -7090,7 +7111,7 @@ meta_window_show_menu (MetaWindow *window,
     insensitive |= META_MENU_OP_MOVE;
 
   if (!META_WINDOW_ALLOWS_RESIZE (window))
-    insensitive |= META_MENU_OP_RESIZE;
+    insensitive |= META_MENU_OP_RESIZE | META_MENU_OP_CHANGE_SIZE;
 
    if (window->always_sticky)
      insensitive |= META_MENU_OP_STICK | META_MENU_OP_UNSTICK | META_MENU_OP_WORKSPACES;

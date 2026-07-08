@@ -74,7 +74,8 @@ typedef enum
   META_MENU_OP_MOVE_RIGHT  = 1 << 14,
   META_MENU_OP_MOVE_UP     = 1 << 15,
   META_MENU_OP_MOVE_DOWN   = 1 << 16,
-  META_MENU_OP_RECOVER     = 1 << 17
+  META_MENU_OP_RECOVER     = 1 << 17,
+  META_MENU_OP_CHANGE_SIZE = 1 << 18
 } MetaMenuOp;
 
 typedef struct _MetaWindowMenu MetaWindowMenu;
