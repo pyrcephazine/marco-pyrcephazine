@@ -1,0 +1,31 @@
+option('verbose-mode',
+  type: 'boolean', value: false,
+  description: 'verbose logging, for embedded/size-sensitive custom builds')
+
+option('sm',
+  type: 'boolean', value: true,
+  description: 'session management support, for embedded/size-sensitive custom non-MATE builds')
+
+option('startup-notification',
+  type: 'boolean', value: true,
+  description: 'startup notification support, for embedded/size-sensitive custom non-MATE builds')
+
+option('compositor',
+  type: 'boolean', value: true,
+  description: 'compositing manager')
+
+option('xsync',
+  type: 'boolean', value: true,
+  description: 'use of the XSync extension')
+
+option('render',
+  type: 'boolean', value: true,
+  description: 'use the RENDER extension')
+
+option('shape',
+  type: 'boolean', value: true,
+  description: 'use the shaped window extension')
+
+option('xinerama',
+  type: 'boolean', value: true,
+  description: 'use the Xinerama extension')
