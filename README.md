@@ -18,7 +18,7 @@ result without installing:
 GSETTINGS_SCHEMA_DIR=$PWD/build-local/src ./build-local/src/marco --replace
 ```
 
-Safer nested-display test:
+Safer nested display test:
 
 ```sh
 Xephyr :2 -screen 1280x800 -ac &
