@@ -36,7 +36,7 @@ The install mode uses `/usr/local` by default. It builds, installs, compiles the
 installed GSettings schema, writes an `/etc/ld.so.conf.d/marco-pyrcephazine.conf`
 entry for the installed `libmarco-private.so`, runs `ldconfig`, and verifies
 that the installed `marco` binary loads a library containing this fork's
-`Change size` menu.
+`Select size` menu.
 
 Useful options:
 
@@ -66,11 +66,15 @@ It should point at `/usr/local/lib/.../libmarco-private.so.2`. If it points at
 sudo ldconfig
 ```
 
-Configure the `Change size` submenu entries:
+Configure the `Select size` submenu entries:
 
 ```sh
 gsettings set org.mate.Marco.general change-size-resolutions "['800x600', '1024x768', '1280x720', '1920x1080']"
 ```
+
+Only configured sizes that fit on the monitor containing the window are shown.
+For example, larger presets such as `2048x1536` (twice `1024x768`) appear only
+when that monitor is large enough.
 
 Reset them to the schema default:
 

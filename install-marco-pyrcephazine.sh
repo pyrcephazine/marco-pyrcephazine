@@ -120,8 +120,8 @@ verify_installed_marco() {
   [ -n "$linked_lib" ] || die "could not determine which libmarco-private $marco_bin loads"
   [ -f "$linked_lib" ] || die "linked libmarco-private not found: $linked_lib"
 
-  if ! strings "$linked_lib" | grep -q 'Change _size'; then
-    die "$marco_bin is loading $linked_lib, which does not contain the Change size menu"
+  if ! strings "$linked_lib" | grep -q 'Select _size'; then
+    die "$marco_bin is loading $linked_lib, which does not contain the Select size menu"
   fi
 
   log "$marco_bin loads $linked_lib"
@@ -247,6 +247,6 @@ Confirm PATH order:
 Start the installed Marco now:
   $PREFIX/bin/marco --replace
 
-Configure Change size entries:
+Configure Select size entries:
   gsettings set org.mate.Marco.general change-size-resolutions "['800x600', '1024x768', '1280x720', '1920x1080']"
 EOF

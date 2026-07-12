@@ -128,6 +128,8 @@ MetaWindowMenu* meta_ui_window_menu_new   (MetaUI             *ui,
                                            MetaMenuOp          insensitive,
                                            unsigned long       active_workspace,
                                            int                 n_workspaces,
+                                           int                 monitor_width,
+                                           int                 monitor_height,
                                            MetaWindowMenuFunc  func,
                                            gpointer            data);
 void            meta_ui_window_menu_popup (MetaWindowMenu     *menu,

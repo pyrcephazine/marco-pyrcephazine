@@ -41,7 +41,7 @@ struct _MetaWindowMenu {
 	MetaMenuOp insensitive;
 };
 
-MetaWindowMenu* meta_window_menu_new(MetaFrames* frames, MetaMenuOp ops, MetaMenuOp insensitive, Window client_xwindow, unsigned long active_workspace, int n_workspaces, MetaWindowMenuFunc func, gpointer data);
+MetaWindowMenu* meta_window_menu_new(MetaFrames* frames, MetaMenuOp ops, MetaMenuOp insensitive, Window client_xwindow, unsigned long active_workspace, int n_workspaces, int monitor_width, int monitor_height, MetaWindowMenuFunc func, gpointer data);
 void meta_window_menu_popup(MetaWindowMenu* menu, int root_x, int root_y, int button, guint32 timestamp);
 void meta_window_menu_free(MetaWindowMenu* menu);
 

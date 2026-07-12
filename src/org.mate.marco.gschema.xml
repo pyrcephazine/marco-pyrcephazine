@@ -192,9 +192,9 @@
       <description>If enabled, tiling a window will cycle through multiple different sizes by using the same keyboard shortcut multiple times in a row.</description>
     </key>
     <key name="change-size-resolutions" type="as">
-      <default>['800x600', '1024x768', '1280x720', '1366x768', '1600x900', '1920x1080']</default>
-      <summary>Window sizes offered in the Change size menu</summary>
-      <description>List of window sizes shown in the Change size submenu of the window titlebar menu. Entries must use WIDTHxHEIGHT format, for example 1024x768.</description>
+      <default>['800x600', '1024x768', '1280x720', '1366x768', '1440x900', '1600x900', '1680x1050', '1920x1080', '2048x1152', '2048x1536', '2560x1440', '2560x1600', '3072x2304', '3840x2160', '4096x3072']</default>
+      <summary>Window sizes offered in the Select size menu</summary>
+      <description>List of window sizes offered in the Select size submenu of the window titlebar menu. Entries must use WIDTHxHEIGHT format, for example 1024x768. Sizes larger than the monitor containing the window are not shown.</description>
     </key>
     <key name="placement-mode" enum="org.mate.Marco.placement_type">
       <default>'automatic'</default>

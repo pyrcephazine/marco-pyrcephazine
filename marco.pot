@@ -715,13 +715,14 @@ msgid ""
 msgstr ""
 
 #: src/org.mate.marco.gschema.xml:196
-msgid "Window sizes offered in the Change size menu"
+msgid "Window sizes offered in the Select size menu"
 msgstr ""
 
 #: src/org.mate.marco.gschema.xml:197
 msgid ""
-"List of window sizes shown in the Change size submenu of the window titlebar "
-"menu. Entries must use WIDTHxHEIGHT format, for example 1024x768."
+"List of window sizes offered in the Select size submenu of the window "
+"titlebar menu. Entries must use WIDTHxHEIGHT format, for example 1024x768. "
+"Sizes larger than the monitor containing the window are not shown."
 msgstr ""
 
 #: src/org.mate.marco.gschema.xml:196
@@ -1471,7 +1472,7 @@ msgid "_Resize"
 msgstr ""
 
 #: src/ui/menu.c:389
-msgid "Change _size"
+msgid "Select _size"
 msgstr ""
 
 #. Translators: Translate this string the same way as you do in libwnck!

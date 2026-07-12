@@ -326,6 +326,8 @@ meta_window_menu_new   (MetaFrames         *frames,
                         Window              client_xwindow,
                         unsigned long       active_workspace,
                         int                 n_workspaces,
+                        int                 monitor_width,
+                        int                 monitor_height,
                         MetaWindowMenuFunc  func,
                         gpointer            data)
 {
@@ -386,7 +388,7 @@ meta_window_menu_new   (MetaFrames         *frames,
               MenuItem change_size = {
                 META_MENU_OP_CHANGE_SIZE, MENU_ITEM_NORMAL,
                 NULL, FALSE,
-                N_("Change _size")
+                N_("Select _size")
               };
 
               submenu = gtk_menu_new ();
@@ -409,6 +411,12 @@ meta_window_menu_new   (MetaFrames         *frames,
                                                                 &width,
                                                                 &height))
                     continue;
+
+                  if (width > monitor_width || height > monitor_height)
+                    {
+                      valid_index++;
+                      continue;
+                    }
 
                   sizeitem.type = MENU_ITEM_NORMAL;
                   sizeitem.op = META_MENU_OP_CHANGE_SIZE;

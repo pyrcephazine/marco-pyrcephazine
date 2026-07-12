@@ -503,6 +503,8 @@ meta_ui_window_menu_new  (MetaUI             *ui,
                           MetaMenuOp          insensitive,
                           unsigned long       active_workspace,
                           int                 n_workspaces,
+                          int                 monitor_width,
+                          int                 monitor_height,
                           MetaWindowMenuFunc  func,
                           gpointer            data)
 {
@@ -511,6 +513,8 @@ meta_ui_window_menu_new  (MetaUI             *ui,
                                client_xwindow,
                                active_workspace,
                                n_workspaces,
+                               monitor_width,
+                               monitor_height,
                                func, data);
 }
 
@@ -1025,4 +1029,3 @@ GdkPixbuf *meta_ui_get_pixbuf_from_surface (cairo_surface_t *surface)
 
 	return gdk_pixbuf_get_from_surface (surface, 0, 0, width, height);
 }
-

@@ -7025,6 +7025,7 @@ meta_window_show_menu (MetaWindow *window,
   MetaMenuOp insensitive;
   MetaWindowMenu *menu;
   MetaWorkspaceLayout layout;
+  const MetaXineramaScreenInfo *monitor;
   int n_workspaces;
   gboolean ltr;
 
@@ -7127,15 +7128,17 @@ meta_window_show_menu (MetaWindow *window,
   if ((ops & ~insensitive) == 0)
     return;
 
-  menu =
-    meta_ui_window_menu_new (window->screen->ui,
-                             window->xwindow,
-                             ops,
-                             insensitive,
-                             meta_window_get_net_wm_desktop (window),
-                             meta_screen_get_n_workspaces (window->screen),
-                             menu_callback,
-                             NULL);
+  monitor = meta_screen_get_xinerama_for_window (window->screen, window);
+  menu = meta_ui_window_menu_new (window->screen->ui,
+                                  window->xwindow,
+                                  ops,
+                                  insensitive,
+                                  meta_window_get_net_wm_desktop (window),
+                                  meta_screen_get_n_workspaces (window->screen),
+                                  monitor->rect.width,
+                                  monitor->rect.height,
+                                  menu_callback,
+                                  NULL);
 
   window->display->window_menu = menu;
   window->display->window_with_menu = window;
