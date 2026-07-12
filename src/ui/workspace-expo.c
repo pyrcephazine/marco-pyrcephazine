@@ -18,7 +18,6 @@
 
 #include <config.h>
 
-#include <glib/gi18n-lib.h>
 #include <gtk/gtk.h>
 #include <gdk/gdkx.h>
 #include <cairo-xlib.h>
@@ -36,6 +35,10 @@
 
 #define EXPO_MAX_SNAPSHOT_WIDTH  720
 #define EXPO_MAX_SNAPSHOT_HEIGHT 480
+#define EXPO_MAX_BACKGROUND_WIDTH  1920
+#define EXPO_MAX_BACKGROUND_HEIGHT 1080
+#define EXPO_BLURRED_BACKGROUND_WIDTH  240
+#define EXPO_BLURRED_BACKGROUND_HEIGHT 180
 #define EXPO_MIN_WINDOW_SIZE       8
 
 typedef struct
@@ -55,6 +58,8 @@ struct _MetaWorkspaceExpo
   GtkWidget *window;
   GtkWidget *drawing_area;
   GList *windows;
+  cairo_surface_t *wallpaper;
+  cairo_surface_t *blurred_wallpaper;
 
   int *workspace_grid;
   int grid_area;
@@ -110,7 +115,6 @@ meta_workspace_expo_calculate_layout (int                      width,
 
   min_dimension = MIN (width, height);
   layout->margin = CLAMP (min_dimension / 28.0, 12.0, 32.0);
-  layout->header_height = CLAMP (height / 10.0, 44.0, 72.0);
   layout->gap = CLAMP (MIN ((double) width / (cols * 12.0),
                             (double) height / (rows * 12.0)),
                        4.0, 20.0);
@@ -121,7 +125,7 @@ meta_workspace_expo_calculate_layout (int                      width,
                          width - 2.0 * layout->margin -
                          (cols - 1) * layout->gap);
   available_height = MAX (1.0,
-                          height - layout->header_height - layout->margin -
+                          height - 2.0 * layout->margin -
                           (rows - 1) * layout->gap);
   aspect = (double) screen_width / screen_height;
   cell_width = available_width / cols;
@@ -132,8 +136,7 @@ meta_workspace_expo_calculate_layout (int                      width,
   grid_width = cols * layout->card_width + (cols - 1) * layout->gap;
   grid_height = rows * layout->card_height + (rows - 1) * layout->gap;
   layout->start_x = (width - grid_width) / 2.0;
-  layout->start_y = layout->header_height +
-                    (height - layout->header_height - grid_height) / 2.0;
+  layout->start_y = (height - grid_height) / 2.0;
 
   return TRUE;
 }
@@ -222,9 +225,12 @@ window_is_eligible (MetaWindow *window)
 }
 
 static cairo_surface_t *
-copy_window_snapshot (MetaWindow *window)
+copy_xlib_surface (MetaDisplay     *display,
+                   cairo_surface_t *source,
+                   cairo_format_t   format,
+                   int              max_width,
+                   int              max_height)
 {
-  cairo_surface_t *source;
   cairo_surface_t *copy;
   cairo_t *cr;
   int source_width;
@@ -234,11 +240,6 @@ copy_window_snapshot (MetaWindow *window)
   double ratio;
   int error_code;
 
-  if (window->display->compositor == NULL)
-    return NULL;
-
-  source = meta_compositor_get_window_surface (window->display->compositor,
-                                               window);
   if (source == NULL ||
       cairo_surface_status (source) != CAIRO_STATUS_SUCCESS ||
       cairo_surface_get_type (source) != CAIRO_SURFACE_TYPE_XLIB)
@@ -257,12 +258,12 @@ copy_window_snapshot (MetaWindow *window)
     }
 
   ratio = MIN (1.0,
-               MIN ((double) EXPO_MAX_SNAPSHOT_WIDTH / source_width,
-                    (double) EXPO_MAX_SNAPSHOT_HEIGHT / source_height));
+               MIN ((double) max_width / source_width,
+                    (double) max_height / source_height));
   width = MAX (1, (int) floor (source_width * ratio));
   height = MAX (1, (int) floor (source_height * ratio));
 
-  copy = cairo_image_surface_create (CAIRO_FORMAT_ARGB32, width, height);
+  copy = cairo_image_surface_create (format, width, height);
   if (cairo_surface_status (copy) != CAIRO_STATUS_SUCCESS)
     {
       cairo_surface_destroy (copy);
@@ -270,7 +271,7 @@ copy_window_snapshot (MetaWindow *window)
       return NULL;
     }
 
-  meta_error_trap_push (window->display);
+  meta_error_trap_push (display);
   cr = cairo_create (copy);
   cairo_scale (cr, ratio, ratio);
   cairo_set_source_surface (cr, source, 0, 0);
@@ -278,7 +279,7 @@ copy_window_snapshot (MetaWindow *window)
   cairo_paint (cr);
   cairo_destroy (cr);
   cairo_surface_flush (copy);
-  error_code = meta_error_trap_pop_with_return (window->display, FALSE);
+  error_code = meta_error_trap_pop_with_return (display, FALSE);
 
   cairo_surface_destroy (source);
 
@@ -290,6 +291,224 @@ copy_window_snapshot (MetaWindow *window)
     }
 
   return copy;
+}
+
+static cairo_surface_t *
+copy_window_snapshot (MetaWindow *window)
+{
+  cairo_surface_t *source;
+
+  if (window->display->compositor == NULL)
+    return NULL;
+
+  source = meta_compositor_get_window_surface (window->display->compositor,
+                                               window);
+  return copy_xlib_surface (window->display, source, CAIRO_FORMAT_ARGB32,
+                            EXPO_MAX_SNAPSHOT_WIDTH,
+                            EXPO_MAX_SNAPSHOT_HEIGHT);
+}
+
+static cairo_surface_t *
+copy_desktop_background (MetaWindow *window)
+{
+  cairo_surface_t *source;
+
+  if (window->display->compositor == NULL)
+    return NULL;
+
+  source = meta_compositor_get_window_surface (window->display->compositor,
+                                               window);
+  return copy_xlib_surface (window->display, source, CAIRO_FORMAT_RGB24,
+                            EXPO_MAX_BACKGROUND_WIDTH,
+                            EXPO_MAX_BACKGROUND_HEIGHT);
+}
+
+static Pixmap
+get_root_background_pixmap (MetaScreen *screen)
+{
+  static const char *property_names[] = {
+    "_XROOTPMAP_ID",
+    "_XSETROOT_ID",
+    "ESETROOT_PMAP_ID"
+  };
+  MetaDisplay *display;
+  Display *xdisplay;
+  Window xroot;
+  Atom pixmap_atom;
+  guint i;
+
+  display = screen->display;
+  xdisplay = display->xdisplay;
+  xroot = screen->xroot;
+  pixmap_atom = XInternAtom (xdisplay, "PIXMAP", False);
+
+  for (i = 0; i < G_N_ELEMENTS (property_names); i++)
+    {
+      Atom property;
+      Atom actual_type;
+      int actual_format;
+      unsigned long nitems;
+      unsigned long bytes_after;
+      unsigned char *data = NULL;
+      int status;
+      int error_code;
+      Pixmap pixmap = None;
+
+      property = XInternAtom (xdisplay, property_names[i], False);
+      meta_error_trap_push (display);
+      status = XGetWindowProperty (xdisplay, xroot, property,
+                                   0, 1, False, pixmap_atom,
+                                   &actual_type, &actual_format,
+                                   &nitems, &bytes_after, &data);
+      error_code = meta_error_trap_pop_with_return (display, FALSE);
+
+      if (status == Success && error_code == Success &&
+          actual_type == pixmap_atom && actual_format == 32 &&
+          nitems == 1 && data != NULL)
+        pixmap = (Pixmap) *((unsigned long *) data);
+
+      if (data != NULL)
+        XFree (data);
+
+      if (pixmap != None)
+        return pixmap;
+    }
+
+  return None;
+}
+
+static cairo_surface_t *
+copy_root_background (MetaScreen *screen)
+{
+  MetaDisplay *display;
+  Display *xdisplay;
+  Pixmap pixmap;
+  Window root_return;
+  int x;
+  int y;
+  unsigned int pixmap_width;
+  unsigned int pixmap_height;
+  unsigned int border_width;
+  unsigned int depth;
+  cairo_surface_t *source;
+  cairo_surface_t *copy;
+  cairo_t *cr;
+  cairo_pattern_t *pattern;
+  double ratio;
+  int width;
+  int height;
+  int error_code;
+  Status geometry_status;
+
+  display = screen->display;
+  xdisplay = display->xdisplay;
+  pixmap = get_root_background_pixmap (screen);
+  if (pixmap == None)
+    return NULL;
+
+  meta_error_trap_push (display);
+  geometry_status = XGetGeometry (xdisplay, pixmap, &root_return,
+                                  &x, &y, &pixmap_width, &pixmap_height,
+                                  &border_width, &depth);
+  error_code = meta_error_trap_pop_with_return (display, FALSE);
+  if (geometry_status == 0 || error_code != Success ||
+      pixmap_width == 0 || pixmap_height == 0)
+    return NULL;
+
+  source = cairo_xlib_surface_create (xdisplay, pixmap,
+                                      DefaultVisual (xdisplay,
+                                                     screen->number),
+                                      pixmap_width, pixmap_height);
+  if (cairo_surface_status (source) != CAIRO_STATUS_SUCCESS)
+    {
+      cairo_surface_destroy (source);
+      return NULL;
+    }
+
+  ratio = MIN (1.0,
+               MIN ((double) EXPO_MAX_BACKGROUND_WIDTH / screen->rect.width,
+                    (double) EXPO_MAX_BACKGROUND_HEIGHT / screen->rect.height));
+  width = MAX (1, (int) floor (screen->rect.width * ratio));
+  height = MAX (1, (int) floor (screen->rect.height * ratio));
+  copy = cairo_image_surface_create (CAIRO_FORMAT_RGB24, width, height);
+  if (cairo_surface_status (copy) != CAIRO_STATUS_SUCCESS)
+    {
+      cairo_surface_destroy (copy);
+      cairo_surface_destroy (source);
+      return NULL;
+    }
+
+  meta_error_trap_push (display);
+  cr = cairo_create (copy);
+  cairo_scale (cr,
+               (double) width / screen->rect.width,
+               (double) height / screen->rect.height);
+  cairo_set_source_surface (cr, source, 0, 0);
+  pattern = cairo_get_source (cr);
+  cairo_pattern_set_extend (pattern, CAIRO_EXTEND_REPEAT);
+  cairo_pattern_set_filter (pattern, CAIRO_FILTER_BEST);
+  cairo_set_operator (cr, CAIRO_OPERATOR_SOURCE);
+  cairo_paint (cr);
+  cairo_destroy (cr);
+  cairo_surface_flush (copy);
+  error_code = meta_error_trap_pop_with_return (display, FALSE);
+
+  cairo_surface_destroy (source);
+  if (error_code != Success ||
+      cairo_surface_status (copy) != CAIRO_STATUS_SUCCESS)
+    {
+      cairo_surface_destroy (copy);
+      return NULL;
+    }
+
+  return copy;
+}
+
+static cairo_surface_t *
+create_blurred_background (cairo_surface_t *wallpaper)
+{
+  cairo_surface_t *blurred;
+  cairo_t *cr;
+  cairo_pattern_t *pattern;
+  int source_width;
+  int source_height;
+  int width;
+  int height;
+  double ratio;
+
+  if (wallpaper == NULL)
+    return NULL;
+
+  source_width = cairo_image_surface_get_width (wallpaper);
+  source_height = cairo_image_surface_get_height (wallpaper);
+  ratio = MIN (1.0,
+               MIN ((double) EXPO_BLURRED_BACKGROUND_WIDTH / source_width,
+                    (double) EXPO_BLURRED_BACKGROUND_HEIGHT / source_height));
+  width = MAX (1, (int) floor (source_width * ratio));
+  height = MAX (1, (int) floor (source_height * ratio));
+  blurred = cairo_image_surface_create (CAIRO_FORMAT_RGB24, width, height);
+  if (cairo_surface_status (blurred) != CAIRO_STATUS_SUCCESS)
+    {
+      cairo_surface_destroy (blurred);
+      return NULL;
+    }
+
+  cr = cairo_create (blurred);
+  cairo_scale (cr, ratio, ratio);
+  cairo_set_source_surface (cr, wallpaper, 0, 0);
+  pattern = cairo_get_source (cr);
+  cairo_pattern_set_filter (pattern, CAIRO_FILTER_BEST);
+  cairo_set_operator (cr, CAIRO_OPERATOR_SOURCE);
+  cairo_paint (cr);
+  cairo_destroy (cr);
+
+  if (cairo_surface_status (blurred) != CAIRO_STATUS_SUCCESS)
+    {
+      cairo_surface_destroy (blurred);
+      return NULL;
+    }
+
+  return blurred;
 }
 
 static MetaWorkspaceExpoWindow *
@@ -326,8 +545,6 @@ workspace_expo_window_free (gpointer data)
 static void
 workspace_expo_get_metrics (MetaWorkspaceExpo *expo,
                             GtkAllocation     *allocation,
-                            double            *margin,
-                            double            *header_height,
                             double            *gap,
                             double            *card_width,
                             double            *card_height,
@@ -343,8 +560,6 @@ workspace_expo_get_metrics (MetaWorkspaceExpo *expo,
                                         expo->rows,
                                         expo->cols,
                                         &layout);
-  *margin = layout.margin;
-  *header_height = layout.header_height;
   *gap = layout.gap;
   *card_width = layout.card_width;
   *card_height = layout.card_height;
@@ -358,8 +573,6 @@ workspace_expo_get_card_rect (MetaWorkspaceExpo *expo,
                               GdkRectangle      *rect)
 {
   GtkAllocation allocation;
-  double margin;
-  double header_height;
   double gap;
   double card_width;
   double card_height;
@@ -369,8 +582,7 @@ workspace_expo_get_card_rect (MetaWorkspaceExpo *expo,
 
   gtk_widget_get_allocation (expo->drawing_area, &allocation);
   workspace_expo_get_metrics (expo, &allocation,
-                              &margin, &header_height, &gap,
-                              &card_width, &card_height,
+                              &gap, &card_width, &card_height,
                               &start_x, &start_y);
 
   for (i = 0; i < expo->grid_area; i++)
@@ -615,6 +827,35 @@ draw_workspace_label (MetaWorkspaceExpo *expo,
 }
 
 static void
+paint_surface_in_rect (cairo_t                *cr,
+                       cairo_surface_t        *surface,
+                       const GdkRectangle     *rect)
+{
+  cairo_pattern_t *pattern;
+  int surface_width;
+  int surface_height;
+
+  g_return_if_fail (surface != NULL);
+  g_return_if_fail (rect != NULL);
+
+  surface_width = cairo_image_surface_get_width (surface);
+  surface_height = cairo_image_surface_get_height (surface);
+
+  cairo_save (cr);
+  cairo_rectangle (cr, rect->x, rect->y, rect->width, rect->height);
+  cairo_clip (cr);
+  cairo_translate (cr, rect->x, rect->y);
+  cairo_scale (cr,
+               (double) rect->width / surface_width,
+               (double) rect->height / surface_height);
+  cairo_set_source_surface (cr, surface, 0, 0);
+  pattern = cairo_get_source (cr);
+  cairo_pattern_set_filter (pattern, CAIRO_FILTER_BILINEAR);
+  cairo_paint (cr);
+  cairo_restore (cr);
+}
+
+static void
 draw_workspace (MetaWorkspaceExpo *expo,
                 cairo_t           *cr,
                 int                workspace_index)
@@ -634,7 +875,14 @@ draw_workspace (MetaWorkspaceExpo *expo,
   cairo_save (cr);
   cairo_rectangle (cr, card.x, card.y, card.width, card.height);
   cairo_clip (cr);
-  cairo_set_source_rgb (cr, 0.10, 0.115, 0.14);
+  if (expo->wallpaper != NULL)
+    paint_surface_in_rect (cr, expo->wallpaper, &card);
+  else
+    {
+      cairo_set_source_rgb (cr, 0.10, 0.115, 0.14);
+      cairo_paint (cr);
+    }
+  cairo_set_source_rgba (cr, 0.015, 0.02, 0.03, 0.20);
   cairo_paint (cr);
 
   link = expo->windows;
@@ -683,49 +931,6 @@ draw_workspace (MetaWorkspaceExpo *expo,
     }
 }
 
-static void
-draw_header (MetaWorkspaceExpo *expo,
-             cairo_t           *cr,
-             int                width)
-{
-  PangoLayout *title;
-  PangoLayout *hint;
-  PangoFontDescription *title_font;
-  PangoFontDescription *hint_font;
-  int title_width;
-  int title_height;
-  int hint_width;
-  int hint_height;
-
-  title = gtk_widget_create_pango_layout (expo->drawing_area,
-                                          _("Workspace Expo"));
-  title_font = pango_font_description_from_string ("Sans Bold 18");
-  pango_layout_set_font_description (title, title_font);
-  pango_layout_get_pixel_size (title, &title_width, &title_height);
-
-  hint = gtk_widget_create_pango_layout (
-    expo->drawing_area,
-    _("Drag windows between workspaces — Arrow keys navigate — Enter opens — Esc closes"));
-  hint_font = pango_font_description_from_string ("Sans 10");
-  pango_layout_set_font_description (hint, hint_font);
-  pango_layout_set_ellipsize (hint, PANGO_ELLIPSIZE_END);
-  pango_layout_set_width (hint, MAX (1, width - 48) * PANGO_SCALE);
-  pango_layout_get_pixel_size (hint, &hint_width, &hint_height);
-
-  cairo_set_source_rgba (cr, 1.0, 1.0, 1.0, 0.96);
-  cairo_move_to (cr, (width - title_width) / 2.0, 10.0);
-  pango_cairo_show_layout (cr, title);
-  cairo_set_source_rgba (cr, 1.0, 1.0, 1.0, 0.66);
-  cairo_move_to (cr, (width - hint_width) / 2.0,
-                 14.0 + title_height);
-  pango_cairo_show_layout (cr, hint);
-
-  pango_font_description_free (title_font);
-  pango_font_description_free (hint_font);
-  g_object_unref (title);
-  g_object_unref (hint);
-}
-
 static gboolean
 workspace_expo_draw (GtkWidget *widget,
                      cairo_t   *cr,
@@ -733,13 +938,27 @@ workspace_expo_draw (GtkWidget *widget,
 {
   MetaWorkspaceExpo *expo = data;
   GtkAllocation allocation;
+  GdkRectangle background_rect;
+  cairo_surface_t *background;
   int i;
 
   gtk_widget_get_allocation (widget, &allocation);
-  cairo_set_source_rgb (cr, 0.035, 0.042, 0.055);
-  cairo_paint (cr);
+  background_rect.x = 0;
+  background_rect.y = 0;
+  background_rect.width = allocation.width;
+  background_rect.height = allocation.height;
+  background = expo->blurred_wallpaper != NULL ?
+    expo->blurred_wallpaper : expo->wallpaper;
 
-  draw_header (expo, cr, allocation.width);
+  if (background != NULL)
+    paint_surface_in_rect (cr, background, &background_rect);
+  else
+    {
+      cairo_set_source_rgb (cr, 0.035, 0.042, 0.055);
+      cairo_paint (cr);
+    }
+  cairo_set_source_rgba (cr, 0.01, 0.015, 0.025, 0.42);
+  cairo_paint (cr);
 
   for (i = 0; i < expo->n_workspaces; i++)
     draw_workspace (expo, cr, i);
@@ -786,6 +1005,7 @@ meta_workspace_expo_new (MetaScreen *screen)
   expo->current_workspace = current_workspace;
   expo->selected_workspace = current_workspace;
   expo->pressed_workspace = -1;
+  expo->wallpaper = copy_root_background (screen);
 
   meta_screen_calc_workspace_layout (screen, expo->n_workspaces,
                                      current_workspace, &layout);
@@ -805,6 +1025,10 @@ meta_workspace_expo_new (MetaScreen *screen)
   for (link = windows; link != NULL; link = link->next)
     {
       MetaWindow *window = link->data;
+
+      if (expo->wallpaper == NULL &&
+          window->type == META_WINDOW_DESKTOP)
+        expo->wallpaper = copy_desktop_background (window);
 
       if (window_is_eligible (window))
         expo->windows = g_list_append (expo->windows,
@@ -844,6 +1068,8 @@ G_GNUC_END_IGNORE_DEPRECATIONS
                      expo->popup_width,
                      expo->popup_height);
 
+  expo->blurred_wallpaper = create_blurred_background (expo->wallpaper);
+
   return expo;
 }
 
@@ -856,6 +1082,10 @@ meta_workspace_expo_free (MetaWorkspaceExpo *expo)
   if (expo->window != NULL)
     gtk_widget_destroy (expo->window);
   g_list_free_full (expo->windows, workspace_expo_window_free);
+  if (expo->blurred_wallpaper != NULL)
+    cairo_surface_destroy (expo->blurred_wallpaper);
+  if (expo->wallpaper != NULL)
+    cairo_surface_destroy (expo->wallpaper);
   g_free (expo->workspace_grid);
   g_free (expo);
 }

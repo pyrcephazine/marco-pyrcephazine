@@ -94,7 +94,9 @@ keys change the selected workspace, `Enter` opens it, and `Escape` or
 
 With compositing enabled, Expo uses snapshots of the windows as they appeared
 when the overview opened. If a snapshot is unavailable or compositing is
-disabled, the same interface remains usable with window icons.
+disabled, the same interface remains usable with window icons. The overview
+uses a softly blurred copy of MATE's current desktop background, while each
+workspace preview shows the same background without the blur.
 
 Change or disable the shortcut through MATE's keyboard-shortcut settings, or
 directly with GSettings:

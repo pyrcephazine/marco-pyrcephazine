@@ -44,7 +44,6 @@ typedef struct
 typedef struct
 {
   double margin;
-  double header_height;
   double gap;
   double card_width;
   double card_height;

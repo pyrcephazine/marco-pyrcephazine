@@ -2367,13 +2367,3 @@ msgid ""
 "seconds wall clock time including X server resources (%g milliseconds per "
 "frame)\n"
 msgstr ""
-
-#: src/ui/workspace-expo.c:701
-msgid "Workspace Expo"
-msgstr ""
-
-#: src/ui/workspace-expo.c:708
-msgid ""
-"Drag windows between workspaces — Arrow keys navigate — Enter opens — Esc "
-"closes"
-msgstr ""
