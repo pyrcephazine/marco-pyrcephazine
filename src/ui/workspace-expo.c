@@ -61,15 +61,17 @@ struct _MetaWorkspaceExpo
   cairo_surface_t *blurred_wallpaper;
 
   int *workspace_grid;
+  GdkRectangle *cards;
+  MetaWorkspaceExpoLayout layout;
   int grid_area;
-  int rows;
-  int cols;
   int n_workspaces;
   int selected_workspace;
   int current_workspace;
+  int drop_workspace;
   int scale;
   int popup_width;
   int popup_height;
+  guint redraw_tick_id;
 
   MetaWorkspaceExpoWindow *pressed_window;
   int pressed_workspace;
@@ -87,6 +89,31 @@ static gboolean workspace_expo_draw (GtkWidget *widget,
                                      cairo_t   *cr,
                                      gpointer   data);
 
+static gboolean
+workspace_expo_redraw_tick (GtkWidget     *widget,
+                            GdkFrameClock *frame_clock,
+                            gpointer       data)
+{
+  MetaWorkspaceExpo *expo = data;
+
+  (void) frame_clock;
+  expo->redraw_tick_id = 0;
+  gtk_widget_queue_draw (widget);
+
+  return G_SOURCE_REMOVE;
+}
+
+static void
+workspace_expo_queue_redraw (MetaWorkspaceExpo *expo)
+{
+  if (expo == NULL || expo->drawing_area == NULL ||
+      expo->redraw_tick_id != 0)
+    return;
+
+  expo->redraw_tick_id = gtk_widget_add_tick_callback (
+    expo->drawing_area, workspace_expo_redraw_tick, expo, NULL);
+}
+
 gboolean
 meta_workspace_expo_calculate_layout (int                      width,
                                       int                      height,
@@ -103,6 +130,7 @@ meta_workspace_expo_calculate_layout (int                      width,
   double cell_height;
   double grid_width;
   double grid_height;
+  double margin;
   double min_dimension;
 
   g_return_val_if_fail (layout != NULL, FALSE);
@@ -113,7 +141,7 @@ meta_workspace_expo_calculate_layout (int                      width,
     return FALSE;
 
   min_dimension = MIN (width, height);
-  layout->margin = CLAMP (min_dimension / 28.0, 12.0, 32.0);
+  margin = CLAMP (min_dimension / 28.0, 12.0, 32.0);
   layout->gap = CLAMP (MIN ((double) width / (cols * 12.0),
                             (double) height / (rows * 12.0)),
                        4.0, 20.0);
@@ -121,10 +149,10 @@ meta_workspace_expo_calculate_layout (int                      width,
   layout->cols = cols;
 
   available_width = MAX (1.0,
-                         width - 2.0 * layout->margin -
+                         width - 2.0 * margin -
                          (cols - 1) * layout->gap);
   available_height = MAX (1.0,
-                          height - 2.0 * layout->margin -
+                          height - 2.0 * margin -
                           (rows - 1) * layout->gap);
   aspect = (double) screen_width / screen_height;
   cell_width = available_width / cols;
@@ -293,7 +321,9 @@ copy_xlib_surface (MetaDisplay     *display,
 }
 
 static cairo_surface_t *
-copy_window_snapshot (MetaWindow *window)
+copy_window_snapshot (MetaWindow *window,
+                      int         max_width,
+                      int         max_height)
 {
   cairo_surface_t *source;
 
@@ -303,12 +333,13 @@ copy_window_snapshot (MetaWindow *window)
   source = meta_compositor_get_window_surface (window->display->compositor,
                                                window);
   return copy_xlib_surface (window->display, source, CAIRO_FORMAT_ARGB32,
-                            EXPO_MAX_SNAPSHOT_WIDTH,
-                            EXPO_MAX_SNAPSHOT_HEIGHT);
+                            max_width, max_height);
 }
 
 static cairo_surface_t *
-copy_desktop_background (MetaWindow *window)
+copy_desktop_background (MetaWindow *window,
+                         int         max_width,
+                         int         max_height)
 {
   cairo_surface_t *source;
 
@@ -318,8 +349,7 @@ copy_desktop_background (MetaWindow *window)
   source = meta_compositor_get_window_surface (window->display->compositor,
                                                window);
   return copy_xlib_surface (window->display, source, CAIRO_FORMAT_RGB24,
-                            EXPO_MAX_BACKGROUND_WIDTH,
-                            EXPO_MAX_BACKGROUND_HEIGHT);
+                            max_width, max_height);
 }
 
 static Pixmap
@@ -377,7 +407,9 @@ get_root_background_pixmap (MetaScreen *screen)
 }
 
 static cairo_surface_t *
-copy_root_background (MetaScreen *screen)
+copy_root_background (MetaScreen *screen,
+                      int         max_width,
+                      int         max_height)
 {
   MetaDisplay *display;
   Display *xdisplay;
@@ -425,8 +457,8 @@ copy_root_background (MetaScreen *screen)
     }
 
   ratio = MIN (1.0,
-               MIN ((double) EXPO_MAX_BACKGROUND_WIDTH / screen->rect.width,
-                    (double) EXPO_MAX_BACKGROUND_HEIGHT / screen->rect.height));
+               MIN ((double) max_width / screen->rect.width,
+                    (double) max_height / screen->rect.height));
   width = MAX (1, (int) floor (screen->rect.width * ratio));
   height = MAX (1, (int) floor (screen->rect.height * ratio));
   copy = cairo_image_surface_create (CAIRO_FORMAT_RGB24, width, height);
@@ -511,19 +543,36 @@ create_blurred_background (cairo_surface_t *wallpaper)
 }
 
 static MetaWorkspaceExpoWindow *
-workspace_expo_window_new (MetaWindow *window)
+workspace_expo_window_new (MetaWindow *window,
+                           int         card_width,
+                           int         card_height)
 {
   MetaWorkspaceExpoWindow *entry;
+  int snapshot_width;
+  int snapshot_height;
 
   entry = g_new0 (MetaWorkspaceExpoWindow, 1);
   entry->xwindow = window->xwindow;
   entry->workspace_index = window->workspace != NULL ?
     meta_workspace_index (window->workspace) : -1;
   entry->sticky = window->on_all_workspaces || window->always_sticky;
-  entry->title = g_strdup (window->title != NULL ? window->title : "");
-  entry->icon = window->icon != NULL ? g_object_ref (window->icon) : NULL;
-  entry->snapshot = copy_window_snapshot (window);
   meta_window_get_outer_rect (window, &entry->rect);
+  snapshot_width = CLAMP (
+    (int) ceil ((double) entry->rect.width * card_width /
+                window->screen->rect.width),
+    EXPO_MIN_WINDOW_SIZE, card_width);
+  snapshot_height = CLAMP (
+    (int) ceil ((double) entry->rect.height * card_height /
+                window->screen->rect.height),
+    EXPO_MIN_WINDOW_SIZE, card_height);
+  entry->snapshot = copy_window_snapshot (window,
+                                          snapshot_width,
+                                          snapshot_height);
+  if (entry->snapshot == NULL)
+    {
+      entry->title = g_strdup (window->title != NULL ? window->title : "");
+      entry->icon = window->icon != NULL ? g_object_ref (window->icon) : NULL;
+    }
 
   return entry;
 }
@@ -541,64 +590,17 @@ workspace_expo_window_free (gpointer data)
   g_free (entry);
 }
 
-static void
-workspace_expo_get_metrics (MetaWorkspaceExpo *expo,
-                            GtkAllocation     *allocation,
-                            double            *gap,
-                            double            *card_width,
-                            double            *card_height,
-                            double            *start_x,
-                            double            *start_y)
-{
-  MetaWorkspaceExpoLayout layout;
-
-  meta_workspace_expo_calculate_layout (allocation->width,
-                                        allocation->height,
-                                        expo->screen->rect.width,
-                                        expo->screen->rect.height,
-                                        expo->rows,
-                                        expo->cols,
-                                        &layout);
-  *gap = layout.gap;
-  *card_width = layout.card_width;
-  *card_height = layout.card_height;
-  *start_x = layout.start_x;
-  *start_y = layout.start_y;
-}
-
 static gboolean
 workspace_expo_get_card_rect (MetaWorkspaceExpo *expo,
                               int                workspace_index,
                               GdkRectangle      *rect)
 {
-  GtkAllocation allocation;
-  double gap;
-  double card_width;
-  double card_height;
-  double start_x;
-  double start_y;
-  int i;
+  if (expo == NULL || rect == NULL || expo->cards == NULL ||
+      workspace_index < 0 || workspace_index >= expo->n_workspaces)
+    return FALSE;
 
-  gtk_widget_get_allocation (expo->drawing_area, &allocation);
-  workspace_expo_get_metrics (expo, &allocation,
-                              &gap, &card_width, &card_height,
-                              &start_x, &start_y);
-
-  for (i = 0; i < expo->grid_area; i++)
-    {
-      if (expo->workspace_grid[i] == workspace_index)
-        {
-          rect->x = (int) floor (start_x +
-                                 (i % expo->cols) * (card_width + gap));
-          rect->y = (int) floor (start_y +
-                                 (i / expo->cols) * (card_height + gap));
-          rect->width = MAX (1, (int) floor (card_width));
-          rect->height = MAX (1, (int) floor (card_height));
-          return TRUE;
-        }
-    }
-
-  return FALSE;
+  *rect = expo->cards[workspace_index];
+  return TRUE;
 }
 
 static int
@@ -606,20 +608,10 @@ workspace_expo_workspace_at_point (MetaWorkspaceExpo *expo,
                                    double             x,
                                    double             y)
 {
-  GtkAllocation allocation;
-  MetaWorkspaceExpoLayout layout;
-
-  gtk_widget_get_allocation (expo->drawing_area, &allocation);
-  if (!meta_workspace_expo_calculate_layout (allocation.width,
-                                             allocation.height,
-                                             expo->screen->rect.width,
-                                             expo->screen->rect.height,
-                                             expo->rows,
-                                             expo->cols,
-                                             &layout))
+  if (expo == NULL || expo->workspace_grid == NULL)
     return -1;
 
-  return meta_workspace_expo_layout_workspace_at (&layout,
+  return meta_workspace_expo_layout_workspace_at (&expo->layout,
                                                    expo->workspace_grid,
                                                    expo->grid_area,
                                                    x, y);
@@ -644,6 +636,24 @@ workspace_expo_get_window_rect (MetaWorkspaceExpo       *expo,
                                              &entry->rect,
                                              &card,
                                              rect);
+}
+
+static gboolean
+workspace_expo_get_drag_rect_at (MetaWorkspaceExpo *expo,
+                                 double             x,
+                                 double             y,
+                                 GdkRectangle      *rect)
+{
+  if (expo == NULL || expo->pressed_window == NULL ||
+      expo->pressed_workspace < 0 || rect == NULL)
+    return FALSE;
+
+  workspace_expo_get_window_rect (expo, expo->pressed_window,
+                                  expo->pressed_workspace, rect);
+  rect->x = (int) floor (x - expo->drag_offset_x);
+  rect->y = (int) floor (y - expo->drag_offset_y);
+
+  return rect->width > 0 && rect->height > 0;
 }
 
 static gboolean
@@ -790,36 +800,35 @@ draw_window_entry (cairo_t                 *cr,
 }
 
 static void
-draw_workspace_label (MetaWorkspaceExpo *expo,
-                      cairo_t           *cr,
-                      int                workspace_index,
+draw_workspace_label (cairo_t            *cr,
+                      int                 workspace_index,
                       const GdkRectangle *card)
 {
-  PangoLayout *layout;
-  PangoFontDescription *font;
+  cairo_text_extents_t extents;
   char label[16];
-  int text_width;
-  int text_height;
+  double badge_width;
+  double badge_height;
+  double baseline;
 
   if (card->height < 36 || card->width < 40)
     return;
 
   g_snprintf (label, sizeof (label), "%d", workspace_index + 1);
-  layout = gtk_widget_create_pango_layout (expo->drawing_area, label);
-  font = pango_font_description_from_string ("Sans Bold 14");
-  pango_layout_set_font_description (layout, font);
-  pango_layout_get_pixel_size (layout, &text_width, &text_height);
+  cairo_select_font_face (cr, "Sans", CAIRO_FONT_SLANT_NORMAL,
+                          CAIRO_FONT_WEIGHT_BOLD);
+  cairo_set_font_size (cr, 18.0);
+  cairo_text_extents (cr, label, &extents);
+  badge_width = MIN (card->width, ceil (extents.x_advance) + 20.0);
+  badge_height = MIN (card->height, 30.0);
+  baseline = card->y + (badge_height - extents.height) / 2.0 -
+             extents.y_bearing;
 
   cairo_set_source_rgba (cr, 0.04, 0.05, 0.07, 0.72);
-  cairo_rectangle (cr, card->x, card->y,
-                   MIN (card->width, text_width + 20), text_height + 10);
+  cairo_rectangle (cr, card->x, card->y, badge_width, badge_height);
   cairo_fill (cr);
   cairo_set_source_rgba (cr, 1.0, 1.0, 1.0, 0.94);
-  cairo_move_to (cr, card->x + 10, card->y + 5);
-  pango_cairo_show_layout (cr, layout);
-
-  pango_font_description_free (font);
-  g_object_unref (layout);
+  cairo_move_to (cr, card->x + 10, baseline);
+  cairo_show_text (cr, label);
 }
 
 static void
@@ -864,9 +873,7 @@ draw_workspace (MetaWorkspaceExpo *expo,
     return;
 
   drop_target = expo->dragging &&
-                workspace_expo_workspace_at_point (expo,
-                                                   expo->pointer_x,
-                                                   expo->pointer_y) == workspace_index;
+                expo->drop_workspace == workspace_index;
 
   cairo_save (cr);
   cairo_rectangle (cr, card.x, card.y, card.width, card.height);
@@ -901,7 +908,7 @@ draw_workspace (MetaWorkspaceExpo *expo,
       link = link->next;
     }
 
-  draw_workspace_label (expo, cr, workspace_index, &card);
+  draw_workspace_label (cr, workspace_index, &card);
   cairo_restore (cr);
 
   if (workspace_index == expo->current_workspace)
@@ -963,19 +970,19 @@ workspace_expo_draw (GtkWidget *widget,
     {
       GdkRectangle rect;
 
-      workspace_expo_get_window_rect (expo,
-                                      expo->pressed_window,
-                                      expo->pressed_workspace,
-                                      &rect);
-      rect.x = (int) floor (expo->pointer_x - expo->drag_offset_x);
-      rect.y = (int) floor (expo->pointer_y - expo->drag_offset_y);
-      cairo_save (cr);
-      cairo_set_source_rgba (cr, 0.0, 0.0, 0.0, 0.45);
-      cairo_rectangle (cr, rect.x + 6, rect.y + 8,
-                       rect.width, rect.height);
-      cairo_fill (cr);
-      draw_window_entry (cr, expo->pressed_window, &rect, 0.92);
-      cairo_restore (cr);
+      if (workspace_expo_get_drag_rect_at (expo,
+                                           expo->pointer_x,
+                                           expo->pointer_y,
+                                           &rect))
+        {
+          cairo_save (cr);
+          cairo_set_source_rgba (cr, 0.0, 0.0, 0.0, 0.45);
+          cairo_rectangle (cr, rect.x + 6, rect.y + 8,
+                           rect.width, rect.height);
+          cairo_fill (cr);
+          draw_window_entry (cr, expo->pressed_window, &rect, 0.92);
+          cairo_restore (cr);
+        }
     }
 
   return TRUE;
@@ -985,11 +992,18 @@ MetaWorkspaceExpo *
 meta_workspace_expo_new (MetaScreen *screen)
 {
   MetaWorkspaceExpo *expo;
-  MetaWorkspaceLayout layout;
+  MetaWorkspaceLayout workspace_layout;
   GdkDisplay *gdk_display;
   GdkScreen *gdk_screen;
   GList *windows;
   GList *link;
+  int rows;
+  int cols;
+  int cell;
+  int card_pixel_width;
+  int card_pixel_height;
+  int background_width;
+  int background_height;
   int current_workspace;
 
   g_return_val_if_fail (screen != NULL, NULL);
@@ -1001,36 +1015,21 @@ meta_workspace_expo_new (MetaScreen *screen)
   expo->current_workspace = current_workspace;
   expo->selected_workspace = current_workspace;
   expo->pressed_workspace = -1;
-  expo->wallpaper = copy_root_background (screen);
+  expo->drop_workspace = -1;
 
   meta_screen_calc_workspace_layout (screen, expo->n_workspaces,
-                                     current_workspace, &layout);
-  expo->rows = layout.rows;
-  expo->cols = layout.cols;
-  expo->grid_area = layout.grid_area;
+                                     current_workspace, &workspace_layout);
+  rows = workspace_layout.rows;
+  cols = workspace_layout.cols;
+  expo->grid_area = workspace_layout.grid_area;
 #if GLIB_CHECK_VERSION(2, 68, 0)
-  expo->workspace_grid = g_memdup2 (layout.grid,
-                                    sizeof (int) * layout.grid_area);
+  expo->workspace_grid = g_memdup2 (workspace_layout.grid,
+                                    sizeof (int) * workspace_layout.grid_area);
 #else
-  expo->workspace_grid = g_memdup (layout.grid,
-                                   sizeof (int) * layout.grid_area);
+  expo->workspace_grid = g_memdup (workspace_layout.grid,
+                                   sizeof (int) * workspace_layout.grid_area);
 #endif
-  meta_screen_free_workspace_layout (&layout);
-
-  windows = meta_stack_list_windows (screen->stack, NULL);
-  for (link = windows; link != NULL; link = link->next)
-    {
-      MetaWindow *window = link->data;
-
-      if (expo->wallpaper == NULL &&
-          window->type == META_WINDOW_DESKTOP)
-        expo->wallpaper = copy_desktop_background (window);
-
-      if (window_is_eligible (window))
-        expo->windows = g_list_append (expo->windows,
-                                      workspace_expo_window_new (window));
-    }
-  g_list_free (windows);
+  meta_screen_free_workspace_layout (&workspace_layout);
 
   gdk_display = gdk_x11_lookup_xdisplay (screen->display->xdisplay);
 G_GNUC_BEGIN_IGNORE_DEPRECATIONS
@@ -1064,6 +1063,64 @@ G_GNUC_END_IGNORE_DEPRECATIONS
                      expo->popup_width,
                      expo->popup_height);
 
+  if (!meta_workspace_expo_calculate_layout (expo->popup_width,
+                                             expo->popup_height,
+                                             screen->rect.width,
+                                             screen->rect.height,
+                                             rows, cols, &expo->layout))
+    {
+      meta_workspace_expo_free (expo);
+      return NULL;
+    }
+
+  expo->cards = g_new0 (GdkRectangle, expo->n_workspaces);
+  for (cell = 0; cell < expo->grid_area; cell++)
+    {
+      int workspace_index = expo->workspace_grid[cell];
+
+      if (workspace_index >= 0 && workspace_index < expo->n_workspaces)
+        meta_workspace_expo_layout_cell_rect (&expo->layout, cell,
+                                              &expo->cards[workspace_index]);
+    }
+
+  card_pixel_width = CLAMP (
+    (int) ceil (expo->layout.card_width * expo->scale),
+    EXPO_MIN_WINDOW_SIZE, EXPO_MAX_SNAPSHOT_WIDTH);
+  card_pixel_height = CLAMP (
+    (int) ceil (expo->layout.card_height * expo->scale),
+    EXPO_MIN_WINDOW_SIZE, EXPO_MAX_SNAPSHOT_HEIGHT);
+  background_width = MIN (EXPO_MAX_BACKGROUND_WIDTH,
+                          MAX (EXPO_BLURRED_BACKGROUND_WIDTH,
+                               (int) ceil (expo->layout.card_width *
+                                           expo->scale)));
+  background_height = MIN (EXPO_MAX_BACKGROUND_HEIGHT,
+                           MAX (EXPO_BLURRED_BACKGROUND_HEIGHT,
+                                (int) ceil (expo->layout.card_height *
+                                            expo->scale)));
+
+  expo->wallpaper = copy_root_background (screen,
+                                          background_width,
+                                          background_height);
+  windows = meta_stack_list_windows (screen->stack, NULL);
+  for (link = windows; link != NULL; link = link->next)
+    {
+      MetaWindow *window = link->data;
+
+      if (expo->wallpaper == NULL &&
+          window->type == META_WINDOW_DESKTOP)
+        expo->wallpaper = copy_desktop_background (window,
+                                                   background_width,
+                                                   background_height);
+
+      if (window_is_eligible (window))
+        expo->windows = g_list_prepend (
+          expo->windows,
+          workspace_expo_window_new (window,
+                                     card_pixel_width,
+                                     card_pixel_height));
+    }
+  g_list_free (windows);
+  expo->windows = g_list_reverse (expo->windows);
   expo->blurred_wallpaper = create_blurred_background (expo->wallpaper);
 
   return expo;
@@ -1075,6 +1132,9 @@ meta_workspace_expo_free (MetaWorkspaceExpo *expo)
   if (expo == NULL)
     return;
 
+  if (expo->redraw_tick_id != 0 && expo->drawing_area != NULL)
+    gtk_widget_remove_tick_callback (expo->drawing_area,
+                                     expo->redraw_tick_id);
   if (expo->window != NULL)
     gtk_widget_destroy (expo->window);
   g_list_free_full (expo->windows, workspace_expo_window_free);
@@ -1082,6 +1142,7 @@ meta_workspace_expo_free (MetaWorkspaceExpo *expo)
     cairo_surface_destroy (expo->blurred_wallpaper);
   if (expo->wallpaper != NULL)
     cairo_surface_destroy (expo->wallpaper);
+  g_free (expo->cards);
   g_free (expo->workspace_grid);
   g_free (expo);
 }
@@ -1123,6 +1184,7 @@ meta_workspace_expo_button_press (MetaWorkspaceExpo *expo,
                                   unsigned int       button)
 {
   int workspace_index;
+  int old_selected_workspace;
   GdkRectangle rect;
 
   if (expo == NULL || button != Button1)
@@ -1138,6 +1200,7 @@ meta_workspace_expo_button_press (MetaWorkspaceExpo *expo,
   if (workspace_index < 0)
     return;
 
+  old_selected_workspace = expo->selected_workspace;
   expo->button_down = TRUE;
   expo->pressed_workspace = workspace_index;
   expo->pressed_window = workspace_expo_window_at_point (expo,
@@ -1154,7 +1217,8 @@ meta_workspace_expo_button_press (MetaWorkspaceExpo *expo,
       expo->drag_offset_y = expo->press_y - rect.y;
     }
 
-  gtk_widget_queue_draw (expo->drawing_area);
+  if (old_selected_workspace != workspace_index)
+    workspace_expo_queue_redraw (expo);
 }
 
 void
@@ -1175,7 +1239,12 @@ meta_workspace_expo_motion (MetaWorkspaceExpo *expo,
                                 (int) expo->pointer_x, (int) expo->pointer_y))
     expo->dragging = TRUE;
 
-  gtk_widget_queue_draw (expo->drawing_area);
+  if (!expo->dragging)
+    return;
+
+  expo->drop_workspace = workspace_expo_workspace_at_point (
+    expo, expo->pointer_x, expo->pointer_y);
+  workspace_expo_queue_redraw (expo);
 }
 
 gboolean
@@ -1224,11 +1293,14 @@ meta_workspace_expo_button_release (MetaWorkspaceExpo       *expo,
       action->workspace_index = expo->pressed_workspace;
     }
 
+  if (expo->dragging)
+    workspace_expo_queue_redraw (expo);
+
   expo->button_down = FALSE;
   expo->dragging = FALSE;
   expo->pressed_window = NULL;
   expo->pressed_workspace = -1;
-  gtk_widget_queue_draw (expo->drawing_area);
+  expo->drop_workspace = -1;
 
   return action->type != META_WORKSPACE_EXPO_ACTION_NONE;
 }
@@ -1237,12 +1309,18 @@ void
 meta_workspace_expo_select_workspace (MetaWorkspaceExpo *expo,
                                       int                workspace_index)
 {
+  int old_workspace;
+
   if (expo == NULL ||
       workspace_index < 0 || workspace_index >= expo->n_workspaces)
     return;
 
+  old_workspace = expo->selected_workspace;
+  if (old_workspace == workspace_index)
+    return;
+
   expo->selected_workspace = workspace_index;
-  gtk_widget_queue_draw (expo->drawing_area);
+  workspace_expo_queue_redraw (expo);
 }
 
 int
@@ -1257,11 +1335,14 @@ meta_workspace_expo_cancel_drag (MetaWorkspaceExpo *expo)
   if (expo == NULL)
     return;
 
+  if (expo->dragging)
+    workspace_expo_queue_redraw (expo);
+
   expo->button_down = FALSE;
   expo->dragging = FALSE;
   expo->pressed_window = NULL;
   expo->pressed_workspace = -1;
-  gtk_widget_queue_draw (expo->drawing_area);
+  expo->drop_workspace = -1;
 }
 
 void
@@ -1285,7 +1366,7 @@ meta_workspace_expo_remove_window (MetaWorkspaceExpo *expo,
             meta_workspace_expo_cancel_drag (expo);
           expo->windows = g_list_delete_link (expo->windows, link);
           workspace_expo_window_free (entry);
-          gtk_widget_queue_draw (expo->drawing_area);
+          workspace_expo_queue_redraw (expo);
           return;
         }
       link = next;
@@ -1328,5 +1409,5 @@ meta_workspace_expo_refresh_windows (MetaWorkspaceExpo *expo)
       link = next;
     }
 
-  gtk_widget_queue_draw (expo->drawing_area);
+  workspace_expo_queue_redraw (expo);
 }

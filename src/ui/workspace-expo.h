@@ -43,7 +43,6 @@ typedef struct
 
 typedef struct
 {
-  double margin;
   double gap;
   double card_width;
   double card_height;
