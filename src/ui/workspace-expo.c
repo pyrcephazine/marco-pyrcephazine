@@ -26,7 +26,6 @@
 #include "workspace-expo.h"
 #include "compositor.h"
 #include "errors.h"
-#include "prefs.h"
 #include "../core/display-private.h"
 #include "../core/screen-private.h"
 #include "../core/stack.h"
@@ -664,7 +663,7 @@ workspace_expo_window_at_point (MetaWorkspaceExpo *expo,
   GdkRectangle card;
 
   if (workspace_expo_get_card_rect (expo, workspace_index, &card) &&
-      card.height >= 30 && y < card.y + 27)
+      card.height >= 36 && y < card.y + 32)
     return NULL;
 
   link = g_list_last (expo->windows);
@@ -798,28 +797,25 @@ draw_workspace_label (MetaWorkspaceExpo *expo,
 {
   PangoLayout *layout;
   PangoFontDescription *font;
-  const char *name;
+  char label[16];
   int text_width;
   int text_height;
 
-  if (card->height < 30 || card->width < 40)
+  if (card->height < 36 || card->width < 40)
     return;
 
-  name = meta_prefs_get_workspace_name (workspace_index);
-  layout = gtk_widget_create_pango_layout (expo->drawing_area,
-                                           name != NULL ? name : "");
-  font = pango_font_description_from_string ("Sans Bold 10");
+  g_snprintf (label, sizeof (label), "%d", workspace_index + 1);
+  layout = gtk_widget_create_pango_layout (expo->drawing_area, label);
+  font = pango_font_description_from_string ("Sans Bold 14");
   pango_layout_set_font_description (layout, font);
-  pango_layout_set_ellipsize (layout, PANGO_ELLIPSIZE_END);
-  pango_layout_set_width (layout, MAX (1, card->width - 16) * PANGO_SCALE);
   pango_layout_get_pixel_size (layout, &text_width, &text_height);
 
   cairo_set_source_rgba (cr, 0.04, 0.05, 0.07, 0.72);
   cairo_rectangle (cr, card->x, card->y,
-                   MIN (card->width, text_width + 16), text_height + 8);
+                   MIN (card->width, text_width + 20), text_height + 10);
   cairo_fill (cr);
   cairo_set_source_rgba (cr, 1.0, 1.0, 1.0, 0.94);
-  cairo_move_to (cr, card->x + 8, card->y + 4);
+  cairo_move_to (cr, card->x + 10, card->y + 5);
   pango_cairo_show_layout (cr, layout);
 
   pango_font_description_free (font);
