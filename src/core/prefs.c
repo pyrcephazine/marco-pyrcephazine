@@ -2452,11 +2452,17 @@ meta_prefs_parse_change_size_resolution (const char *resolution,
   if (resolution == NULL || *resolution == '\0')
     return FALSE;
 
+  if (!g_ascii_isdigit (*resolution))
+    return FALSE;
+
   parsed_width = g_ascii_strtoull (resolution, &end, 10);
   if (end == resolution || *end != 'x')
     return FALSE;
 
   resolution = end + 1;
+  if (!g_ascii_isdigit (*resolution))
+    return FALSE;
+
   parsed_height = g_ascii_strtoull (resolution, &end, 10);
   if (end == resolution || *end != '\0')
     return FALSE;

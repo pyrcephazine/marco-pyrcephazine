@@ -819,7 +819,6 @@ meta_invalidate_default_icons (void)
   g_slist_free (windows);
 }
 
-
 void
 meta_invalidate_all_icons (void)
 {
