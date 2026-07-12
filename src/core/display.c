@@ -48,6 +48,7 @@
 #include "bell.h"
 #include "effects.h"
 #include "compositor.h"
+#include "../ui/workspace-expo.h"
 #include <X11/Xatom.h>
 #include <X11/cursorfont.h>
 #include <X11/extensions/XRes.h>
@@ -1169,6 +1170,7 @@ grab_op_is_keyboard (MetaGrabOp op)
     case META_GRAB_OP_KEYBOARD_ESCAPING_GROUP:
     case META_GRAB_OP_KEYBOARD_WORKSPACE_SWITCHING:
     case META_GRAB_OP_KEYBOARD_WORKSPACE_MOVING:
+    case META_GRAB_OP_WORKSPACE_EXPO:
       return TRUE;
 
     default:
@@ -1854,6 +1856,13 @@ static gboolean event_callback(XEvent* event, gpointer data)
                          &mask);
           window = meta_display_lookup_x_window (display, child);
         }
+      if (display->grab_op == META_GRAB_OP_WORKSPACE_EXPO &&
+          display->grab_screen != NULL)
+        {
+          meta_screen_workspace_expo_handle_event (display->grab_screen,
+                                                   event);
+          break;
+        }
       if ((window &&
            grab_op_is_mouse (display->grab_op) &&
            display->grab_button != (int) event->xbutton.button &&
@@ -2065,6 +2074,13 @@ static gboolean event_callback(XEvent* event, gpointer data)
         }
       break;
     case ButtonRelease:
+      if (display->grab_op == META_GRAB_OP_WORKSPACE_EXPO &&
+          display->grab_screen != NULL)
+        {
+          meta_screen_workspace_expo_handle_event (display->grab_screen,
+                                                   event);
+          break;
+        }
       if (display->grab_window == window &&
           grab_op_is_mouse (display->grab_op))
         meta_window_handle_mouse_grab_op_event (window, event);
@@ -2072,6 +2088,13 @@ static gboolean event_callback(XEvent* event, gpointer data)
         display->tab_popup_mouse_pressed = FALSE;
       break;
     case MotionNotify:
+      if (display->grab_op == META_GRAB_OP_WORKSPACE_EXPO &&
+          display->grab_screen != NULL)
+        {
+          meta_screen_workspace_expo_handle_event (display->grab_screen,
+                                                   event);
+          break;
+        }
       if (display->grab_window == window &&
           grab_op_is_mouse (display->grab_op))
         meta_window_handle_mouse_grab_op_event (window, event);
@@ -2349,12 +2372,21 @@ static gboolean event_callback(XEvent* event, gpointer data)
         }
       break;
     case MapNotify:
+      if (display->grab_op == META_GRAB_OP_WORKSPACE_EXPO &&
+          display->grab_screen != NULL &&
+          display->grab_screen->workspace_expo != NULL)
+        meta_workspace_expo_raise (display->grab_screen->workspace_expo);
       break;
     case MapRequest:
       if (window == NULL)
         {
           window = meta_window_new (display, event->xmaprequest.window,
                                     FALSE);
+          if (window != NULL &&
+              display->grab_op == META_GRAB_OP_WORKSPACE_EXPO &&
+              display->grab_screen == window->screen)
+            meta_screen_close_workspace_expo (window->screen,
+                                              display->current_time);
         }
       /* if frame was receiver it's some malicious send event or something */
       else if (!frame_was_receiver && window)
@@ -3621,7 +3653,8 @@ meta_display_begin_grab_op (MetaDisplay *display,
   meta_display_set_grab_op_cursor (display, screen, op, FALSE, grab_xwindow,
                                    timestamp);
 
-  if (!display->grab_have_pointer && !grab_op_is_keyboard (op))
+  if (!display->grab_have_pointer &&
+      (!grab_op_is_keyboard (op) || op == META_GRAB_OP_WORKSPACE_EXPO))
     {
       meta_topic (META_DEBUG_WINDOW_OPS,
                   "XGrabPointer() failed\n");
@@ -3880,6 +3913,12 @@ meta_display_end_grab_op (MetaDisplay *display,
       /* If the ungrab here causes an EnterNotify, ignore it for
        * sloppy focus
        */
+      display->ungrab_should_not_cause_focus_window = display->grab_xwindow;
+    }
+
+  if (display->grab_op == META_GRAB_OP_WORKSPACE_EXPO)
+    {
+      meta_screen_destroy_workspace_expo (display->grab_screen);
       display->ungrab_should_not_cause_focus_window = display->grab_xwindow;
     }
 

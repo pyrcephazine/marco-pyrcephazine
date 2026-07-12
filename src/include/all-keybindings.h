@@ -151,6 +151,7 @@ keybind (cycle-panels-backward, handle_cycle, META_TAB_LIST_DOCKS, REVERSES_AND_
 /***********************************/
 
 keybind (show-desktop, handle_show_desktop, 0, 0)
+keybind (show-workspace-expo, handle_show_workspace_expo, 0, 0)
 keybind (panel-main-menu, handle_panel, META_KEYBINDING_ACTION_PANEL_MAIN_MENU, 0)
 keybind (panel-run-dialog, handle_panel, META_KEYBINDING_ACTION_PANEL_RUN_DIALOG, 0)
 
@@ -303,4 +304,3 @@ keybind (switch-to-workspace-prev, handle_switch_to_workspace,
          META_MOTION_PREV, 0)
 
 /* eof all-keybindings.h */
-

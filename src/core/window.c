@@ -1004,6 +1004,9 @@ meta_window_free (MetaWindow  *window,
 
   meta_verbose ("Unmanaging 0x%lx\n", window->xwindow);
 
+  meta_screen_workspace_expo_remove_window (window->screen,
+                                            window->xwindow);
+
   if (window->display->compositor)
     meta_compositor_free_window (window->display->compositor, window);
 

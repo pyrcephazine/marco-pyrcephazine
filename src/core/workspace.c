@@ -376,6 +376,10 @@ meta_workspace_activate_with_focus (MetaWorkspace *workspace,
   meta_verbose ("Activating workspace %d\n",
                 meta_workspace_index (workspace));
 
+  if (workspace->screen->display->grab_op == META_GRAB_OP_WORKSPACE_EXPO &&
+      workspace->screen->workspace_expo != NULL)
+    meta_screen_close_workspace_expo (workspace->screen, timestamp);
+
   if (workspace->screen->active_workspace == workspace)
     return;
 

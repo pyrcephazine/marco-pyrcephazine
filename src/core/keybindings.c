@@ -113,6 +113,11 @@ static gboolean process_workspace_switch_grab (MetaDisplay *display,
                                                XEvent      *event,
                                                KeySym       keysym);
 
+static gboolean process_workspace_expo_grab (MetaDisplay *display,
+                                              MetaScreen  *screen,
+                                              XEvent      *event,
+                                              KeySym       keysym);
+
 static void regrab_key_bindings         (MetaDisplay *display);
 
 typedef struct
@@ -1408,6 +1413,14 @@ meta_display_process_key_event (MetaDisplay *display,
                           "Processing event for keyboard workspace switching\n");
               keep_grab = process_workspace_switch_grab (display, screen, window, event, keysym);
               break;
+            case META_GRAB_OP_WORKSPACE_EXPO:
+              meta_topic (META_DEBUG_KEYBINDINGS,
+                          "Processing event for workspace expo\n");
+              keep_grab = process_workspace_expo_grab (display, screen,
+                                                        event, keysym);
+              if (!keep_grab)
+                meta_display_end_grab_op (display, event->xkey.time);
+              return;
             default:
               break;
             }
@@ -2878,6 +2891,60 @@ process_workspace_switch_grab (MetaDisplay *display,
   return FALSE;
 }
 
+static gboolean
+process_workspace_expo_grab (MetaDisplay *display,
+                             MetaScreen  *screen,
+                             XEvent      *event,
+                             KeySym       keysym)
+{
+  MetaKeyBindingAction action;
+
+  if (screen != display->grab_screen || screen->workspace_expo == NULL)
+    return FALSE;
+
+  if (event->type == KeyRelease)
+    return TRUE;
+
+  if (keysym == XK_Escape)
+    return FALSE;
+
+  action = display_get_keybinding_action (display,
+                                          keysym,
+                                          event->xkey.keycode,
+                                          display->grab_mask);
+  if (action == META_KEYBINDING_ACTION_WORKSPACE_EXPO)
+    return FALSE;
+
+  switch (keysym)
+    {
+    case XK_Left:
+    case XK_KP_Left:
+      meta_screen_workspace_expo_select_neighbor (screen, META_MOTION_LEFT);
+      break;
+    case XK_Right:
+    case XK_KP_Right:
+      meta_screen_workspace_expo_select_neighbor (screen, META_MOTION_RIGHT);
+      break;
+    case XK_Up:
+    case XK_KP_Up:
+      meta_screen_workspace_expo_select_neighbor (screen, META_MOTION_UP);
+      break;
+    case XK_Down:
+    case XK_KP_Down:
+      meta_screen_workspace_expo_select_neighbor (screen, META_MOTION_DOWN);
+      break;
+    case XK_Return:
+    case XK_KP_Enter:
+      meta_screen_workspace_expo_activate_selected (screen,
+                                                     event->xkey.time);
+      break;
+    default:
+      break;
+    }
+
+  return TRUE;
+}
+
 static void
 handle_show_desktop (MetaDisplay    *display,
                        MetaScreen     *screen,
@@ -2894,6 +2961,44 @@ handle_show_desktop (MetaDisplay    *display,
     }
   else
     meta_screen_show_desktop (screen, event->xkey.time);
+}
+
+static void
+handle_show_workspace_expo (MetaDisplay    *display,
+                            MetaScreen     *screen,
+                            MetaWindow     *window,
+                            XEvent         *event,
+                            MetaKeyBinding *binding)
+{
+  if (display->grab_op == META_GRAB_OP_WORKSPACE_EXPO)
+    {
+      meta_display_end_grab_op (display, event->xkey.time);
+      return;
+    }
+
+  if (display->grab_op != META_GRAB_OP_NONE)
+    return;
+
+  if (!meta_screen_prepare_workspace_expo (screen))
+    return;
+
+  if (!meta_display_begin_grab_op (display,
+                                   screen,
+                                   NULL,
+                                   META_GRAB_OP_WORKSPACE_EXPO,
+                                   FALSE,
+                                   FALSE,
+                                   0,
+                                   binding->mask,
+                                   event->xkey.time,
+                                   event->xkey.x_root,
+                                   event->xkey.y_root))
+    {
+      meta_screen_destroy_workspace_expo (screen);
+      return;
+    }
+
+  meta_screen_show_workspace_expo (screen);
 }
 
 static void

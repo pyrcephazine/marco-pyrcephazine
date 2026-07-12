@@ -103,6 +103,8 @@ libmarco = shared_library(
     'include/tabpopup.h',
     'ui/tile-preview.c',
     'include/tile-preview.h',
+    'ui/workspace-expo.c',
+    'ui/workspace-expo.h',
     'ui/theme-parser.c',
     'ui/theme-parser.h',
     'ui/theme.c',
@@ -179,6 +181,20 @@ executable('testasyncgetprop',
   dependencies : marco_deps,
 )
 
+test_workspace_expo = executable('test-workspace-expo',
+  'ui/test-workspace-expo.c',
+  include_directories : [
+    include_directories('.'),
+    include_directories('..'),
+    include_directories('./include'),
+    include_directories('./ui'),
+  ],
+  dependencies : marco_deps,
+  link_with : libmarco,
+)
+
+test('workspace-expo-layout', test_workspace_expo)
+
 gnome = import('gnome')
 i18n = import('i18n')
 
@@ -200,7 +216,9 @@ i18n.merge_file(
   install_dir: join_paths(datadir, 'mate', 'wm-properties')
   )
 
-compiled_schemas = gnome.compile_schemas()
+compiled_schemas = gnome.compile_schemas(
+  depend_files: files('org.mate.marco.gschema.xml')
+)
 install_data('org.mate.marco.gschema.xml',
                install_dir : 'share/glib-2.0/schemas')
 

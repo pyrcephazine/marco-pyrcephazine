@@ -110,6 +110,8 @@ libmarco_private_la_SOURCES=			\
 	include/tabpopup.h \
 	ui/tile-preview.c \
 	include/tile-preview.h \
+	ui/workspace-expo.c \
+	ui/workspace-expo.h \
 	ui/theme-parser.c \
 	ui/theme-parser.h \
 	ui/theme.c \
@@ -142,12 +144,14 @@ marco_theme_viewer_LDADD= @MARCO_LIBS@ libmarco-private.la
 testboxes_SOURCES=include/util.h core/util.c include/boxes.h core/boxes.c core/testboxes.c
 testgradient_SOURCES=ui/gradient.h ui/gradient.c ui/testgradient.c
 testasyncgetprop_SOURCES=core/async-getprop.h core/async-getprop.c core/testasyncgetprop.c
+test_workspace_expo_SOURCES=ui/test-workspace-expo.c ui/workspace-expo.h
 
-noinst_PROGRAMS=testboxes testgradient testasyncgetprop
+noinst_PROGRAMS=testboxes testgradient testasyncgetprop test-workspace-expo
 
 testboxes_LDADD= @MARCO_LIBS@
 testgradient_LDADD= @MARCO_LIBS@
 testasyncgetprop_LDADD= @MARCO_LIBS@
+test_workspace_expo_LDADD= @MARCO_LIBS@ libmarco-private.la
 
 %.desktop: %.desktop.in
 	$(AM_V_GEN) $(MSGFMT) --desktop --template $< -d $(top_srcdir)/po -o $@

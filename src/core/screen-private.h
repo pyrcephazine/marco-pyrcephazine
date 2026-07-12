@@ -39,6 +39,7 @@
 #include "ui.h"
 
 typedef struct _MetaXineramaScreenInfo MetaXineramaScreenInfo;
+typedef struct _MetaWorkspaceExpo MetaWorkspaceExpo;
 
 struct _MetaXineramaScreenInfo
 {
@@ -79,6 +80,7 @@ struct _MetaScreen
   MetaRectangle rect;  /* Size of screen; rect.x & rect.y are always 0 */
   MetaUI *ui;
   MetaTabPopup *tab_popup;
+  MetaWorkspaceExpo *workspace_expo;
   MetaTilePreview *tile_preview;
 
   guint tile_preview_timeout_id;
@@ -167,6 +169,19 @@ void          meta_screen_ensure_tab_popup    (MetaScreen                 *scree
                                                MetaTabList                 list_type,
                                                MetaTabShowType             show_type);
 void          meta_screen_ensure_workspace_popup (MetaScreen *screen);
+gboolean      meta_screen_prepare_workspace_expo (MetaScreen *screen);
+void          meta_screen_show_workspace_expo (MetaScreen *screen);
+void          meta_screen_destroy_workspace_expo (MetaScreen *screen);
+void          meta_screen_close_workspace_expo (MetaScreen *screen,
+                                                 guint32     timestamp);
+void          meta_screen_workspace_expo_handle_event (MetaScreen *screen,
+                                                        XEvent     *event);
+void          meta_screen_workspace_expo_select_neighbor (MetaScreen          *screen,
+                                                           int                  direction);
+void          meta_screen_workspace_expo_activate_selected (MetaScreen *screen,
+                                                             guint32     timestamp);
+void          meta_screen_workspace_expo_remove_window (MetaScreen *screen,
+                                                         Window      xwindow);
 void          meta_screen_tile_preview_update          (MetaScreen    *screen,
                                                         gboolean       delay);
 

@@ -82,6 +82,28 @@ Reset them to the schema default:
 gsettings reset org.mate.Marco.general change-size-resolutions
 ```
 
+Workspace Expo
+---
+
+Press `Super+E` to cover the desktop with an overview of every configured
+workspace. Click a workspace to switch to it, click a window preview to switch
+and focus that window, or drag a preview to another workspace. Expo remains
+open after a drag so several windows can be organized in one session. Arrow
+keys change the selected workspace, `Enter` opens it, and `Escape` or
+`Super+E` closes the overview.
+
+With compositing enabled, Expo uses snapshots of the windows as they appeared
+when the overview opened. If a snapshot is unavailable or compositing is
+disabled, the same interface remains usable with window icons.
+
+Change or disable the shortcut through MATE's keyboard-shortcut settings, or
+directly with GSettings:
+
+```sh
+gsettings set org.mate.Marco.global-keybindings show-workspace-expo '<Super>e'
+gsettings set org.mate.Marco.global-keybindings show-workspace-expo 'disabled'
+```
+
 MATE Marco is a fork of GNOME Metacity.
 
 COMPILING MARCO

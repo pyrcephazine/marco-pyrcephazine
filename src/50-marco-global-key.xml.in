@@ -15,6 +15,8 @@
 
 	<KeyListEntry name="show-desktop" description="Hide all normal windows and set focus to the desktop" />
 
+	<KeyListEntry name="show-workspace-expo" description="Show all workspaces and move windows between them" />
+
 	<KeyListEntry name="switch-to-workspace-1"
 	description="Switch to workspace 1"
 	value="1"
@@ -131,4 +133,3 @@
 	description="Switch to previously selected workspace" />
 
 </KeyListEntries>
-

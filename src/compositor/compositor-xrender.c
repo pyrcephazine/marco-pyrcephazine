@@ -3294,6 +3294,15 @@ xrender_get_window_surface (MetaCompositor *compositor,
   if (cw == NULL)
     return NULL;
 
+  /* A window first encountered while unmapped may never have had a backing
+   * pixmap.  Try to name one for viewable windows, but never manufacture a
+   * Cairo surface around Pixmap None. */
+  if (cw->back_pixmap == None && cw->attrs.map_state == IsViewable)
+    {
+      if (cw->picture == None)
+        cw->picture = get_window_picture (cw);
+    }
+
   xrc = (MetaCompositorXRender *) compositor;
   display = meta_display_get_xdisplay (xrc->display);
 
@@ -3301,6 +3310,12 @@ xrender_get_window_surface (MetaCompositor *compositor,
     pixmap = cw->shaded_back_pixmap;
   else
     pixmap = cw->back_pixmap;
+
+  if (pixmap == None)
+    pixmap = cw->back_pixmap;
+
+  if (pixmap == None)
+    return NULL;
 
   return cairo_xlib_surface_create (display, pixmap, cw->attrs.visual,
                                     cw->attrs.width, cw->attrs.height);
@@ -3569,4 +3584,3 @@ meta_compositor_xrender_new (MetaDisplay *display)
 }
 
 #endif /* HAVE_COMPOSITE_EXTENSIONS */
-

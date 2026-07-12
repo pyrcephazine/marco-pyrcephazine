@@ -36,6 +36,7 @@
 #include "frame-private.h"
 #include "prefs.h"
 #include "workspace.h"
+#include "../ui/workspace-expo.h"
 #include "keybindings.h"
 #include "prefs.h"
 #include "stack.h"
@@ -506,6 +507,7 @@ meta_screen_new (MetaDisplay *display,
   screen->vertical_workspaces = FALSE;
   screen->starting_corner = META_SCREEN_TOPLEFT;
   screen->compositor_data = NULL;
+  screen->workspace_expo = NULL;
 
   {
     XFontStruct *font_info;
@@ -637,6 +639,8 @@ meta_screen_free (MetaScreen *screen,
   display = screen->display;
 
   screen->closing += 1;
+
+  meta_screen_close_workspace_expo (screen, timestamp);
 
   meta_display_grab (display);
 
@@ -870,6 +874,7 @@ prefs_changed_callback (MetaPreference pref,
        */
       guint32 timestamp =
         meta_display_get_current_time_roundtrip (screen->display);
+      meta_screen_close_workspace_expo (screen, timestamp);
       update_num_workspaces (screen, timestamp);
     }
   else if (pref == META_PREF_FOCUS_MODE)
@@ -1494,6 +1499,207 @@ meta_screen_ensure_workspace_popup (MetaScreen *screen)
   meta_screen_free_workspace_layout (&layout);
 
   /* don't show tab popup, since proper space isn't selected yet */
+}
+
+gboolean
+meta_screen_prepare_workspace_expo (MetaScreen *screen)
+{
+  g_return_val_if_fail (screen != NULL, FALSE);
+
+  if (screen->workspace_expo != NULL)
+    return TRUE;
+
+  screen->workspace_expo = meta_workspace_expo_new (screen);
+
+  return screen->workspace_expo != NULL;
+}
+
+void
+meta_screen_show_workspace_expo (MetaScreen *screen)
+{
+  if (screen != NULL && screen->workspace_expo != NULL)
+    meta_workspace_expo_show (screen->workspace_expo);
+}
+
+void
+meta_screen_destroy_workspace_expo (MetaScreen *screen)
+{
+  if (screen == NULL || screen->workspace_expo == NULL)
+    return;
+
+  meta_workspace_expo_free (screen->workspace_expo);
+  screen->workspace_expo = NULL;
+}
+
+void
+meta_screen_close_workspace_expo (MetaScreen *screen,
+                                  guint32     timestamp)
+{
+  if (screen == NULL || screen->workspace_expo == NULL)
+    return;
+
+  if (screen->display->grab_op == META_GRAB_OP_WORKSPACE_EXPO &&
+      screen->display->grab_screen == screen)
+    meta_display_end_grab_op (screen->display, timestamp);
+  else
+    meta_screen_destroy_workspace_expo (screen);
+}
+
+static void
+activate_workspace_expo_action (MetaScreen                    *screen,
+                                const MetaWorkspaceExpoAction *action,
+                                guint32                        timestamp)
+{
+  MetaDisplay *display;
+  Window xwindow;
+  int workspace_index;
+  MetaWorkspaceExpoActionType type;
+  MetaWorkspace *workspace;
+  MetaWindow *window;
+
+  display = screen->display;
+  type = action->type;
+  xwindow = action->xwindow;
+  workspace_index = action->workspace_index;
+
+  meta_display_end_grab_op (display, timestamp);
+
+  workspace = meta_screen_get_workspace_by_index (screen, workspace_index);
+  if (workspace == NULL)
+    return;
+
+  if (type == META_WORKSPACE_EXPO_ACTION_ACTIVATE_WORKSPACE)
+    {
+      if (workspace != screen->active_workspace)
+        meta_workspace_activate (workspace, timestamp);
+      return;
+    }
+
+  window = meta_display_lookup_x_window (display, xwindow);
+  if (window == NULL || window->screen != screen || window->unmanaging)
+    return;
+
+  if (!window->on_all_workspaces && !window->always_sticky &&
+      window->workspace != workspace)
+    return;
+
+  if (workspace != screen->active_workspace)
+    meta_workspace_activate_with_focus (workspace, window, timestamp);
+  else
+    meta_window_activate (window, timestamp);
+}
+
+void
+meta_screen_workspace_expo_handle_event (MetaScreen *screen,
+                                         XEvent     *event)
+{
+  MetaWorkspaceExpoAction action;
+
+  if (screen == NULL || screen->workspace_expo == NULL || event == NULL)
+    return;
+
+  switch (event->type)
+    {
+    case ButtonPress:
+      meta_workspace_expo_button_press (screen->workspace_expo,
+                                        event->xbutton.x_root,
+                                        event->xbutton.y_root,
+                                        event->xbutton.button);
+      break;
+
+    case MotionNotify:
+      meta_workspace_expo_motion (screen->workspace_expo,
+                                  event->xmotion.x_root,
+                                  event->xmotion.y_root);
+      break;
+
+    case ButtonRelease:
+      if (!meta_workspace_expo_button_release (screen->workspace_expo,
+                                               event->xbutton.x_root,
+                                               event->xbutton.y_root,
+                                               event->xbutton.button,
+                                               &action))
+        return;
+
+      if (action.type == META_WORKSPACE_EXPO_ACTION_MOVE_WINDOW)
+        {
+          MetaWindow *window;
+          MetaWorkspace *workspace;
+
+          window = meta_display_lookup_x_window (screen->display,
+                                                 action.xwindow);
+          workspace = meta_screen_get_workspace_by_index (
+            screen, action.workspace_index);
+
+          if (window != NULL && workspace != NULL &&
+              window->screen == screen && !window->unmanaging &&
+              !window->on_all_workspaces && !window->always_sticky &&
+              window->workspace != workspace)
+            {
+              meta_window_change_workspace (window, workspace);
+              meta_workspace_expo_refresh_windows (screen->workspace_expo);
+              meta_workspace_expo_select_workspace (screen->workspace_expo,
+                                                     action.workspace_index);
+            }
+        }
+      else
+        {
+          activate_workspace_expo_action (screen, &action,
+                                          event->xbutton.time);
+        }
+      break;
+
+    default:
+      break;
+    }
+}
+
+void
+meta_screen_workspace_expo_select_neighbor (MetaScreen *screen,
+                                            int         direction)
+{
+  int selected;
+  MetaWorkspace *workspace;
+  MetaWorkspace *neighbor;
+
+  if (screen == NULL || screen->workspace_expo == NULL)
+    return;
+
+  selected = meta_workspace_expo_get_selected_workspace (
+    screen->workspace_expo);
+  workspace = meta_screen_get_workspace_by_index (screen, selected);
+  if (workspace == NULL)
+    return;
+
+  neighbor = meta_workspace_get_neighbor (workspace,
+                                          (MetaMotionDirection) direction);
+  if (neighbor != NULL)
+    meta_workspace_expo_select_workspace (screen->workspace_expo,
+                                          meta_workspace_index (neighbor));
+}
+
+void
+meta_screen_workspace_expo_activate_selected (MetaScreen *screen,
+                                               guint32     timestamp)
+{
+  MetaWorkspaceExpoAction action;
+
+  if (screen == NULL || screen->workspace_expo == NULL)
+    return;
+
+  action.type = META_WORKSPACE_EXPO_ACTION_ACTIVATE_WORKSPACE;
+  action.xwindow = None;
+  action.workspace_index = meta_workspace_expo_get_selected_workspace (
+    screen->workspace_expo);
+  activate_workspace_expo_action (screen, &action, timestamp);
+}
+
+void
+meta_screen_workspace_expo_remove_window (MetaScreen *screen,
+                                          Window      xwindow)
+{
+  if (screen != NULL && screen->workspace_expo != NULL)
+    meta_workspace_expo_remove_window (screen->workspace_expo, xwindow);
 }
 
 static gboolean
@@ -2457,6 +2663,14 @@ meta_screen_resize (MetaScreen *screen,
                     int         width,
                     int         height)
 {
+  if (screen->workspace_expo != NULL)
+    {
+      guint32 timestamp;
+
+      timestamp = meta_display_get_current_time_roundtrip (screen->display);
+      meta_screen_close_workspace_expo (screen, timestamp);
+    }
+
   screen->rect.width = width;
   screen->rect.height = height;
 
