@@ -26,6 +26,7 @@
 #include "workspace-expo.h"
 #include "compositor.h"
 #include "errors.h"
+#include "prefs.h"
 #include "../core/display-private.h"
 #include "../core/screen-private.h"
 #include "../core/stack.h"
@@ -51,6 +52,13 @@ typedef struct
   guint sticky : 1;
 } MetaWorkspaceExpoWindow;
 
+typedef struct
+{
+  PangoLayout *layout;
+  int width;
+  int height;
+} MetaWorkspaceExpoLabel;
+
 struct _MetaWorkspaceExpo
 {
   MetaScreen *screen;
@@ -62,11 +70,11 @@ struct _MetaWorkspaceExpo
 
   int *workspace_grid;
   GdkRectangle *cards;
+  MetaWorkspaceExpoLabel *labels;
   MetaWorkspaceExpoLayout layout;
   int grid_area;
   int n_workspaces;
   int selected_workspace;
-  int current_workspace;
   int drop_workspace;
   int scale;
   int popup_width;
@@ -800,35 +808,28 @@ draw_window_entry (cairo_t                 *cr,
 }
 
 static void
-draw_workspace_label (cairo_t            *cr,
+draw_workspace_label (MetaWorkspaceExpo  *expo,
+                      cairo_t            *cr,
                       int                 workspace_index,
                       const GdkRectangle *card)
 {
-  cairo_text_extents_t extents;
-  char label[16];
+  MetaWorkspaceExpoLabel *label;
   double badge_width;
   double badge_height;
-  double baseline;
 
-  if (card->height < 36 || card->width < 40)
+  if (expo->labels == NULL || card->height < 36 || card->width < 40)
     return;
 
-  g_snprintf (label, sizeof (label), "%d", workspace_index + 1);
-  cairo_select_font_face (cr, "Sans", CAIRO_FONT_SLANT_NORMAL,
-                          CAIRO_FONT_WEIGHT_BOLD);
-  cairo_set_font_size (cr, 18.0);
-  cairo_text_extents (cr, label, &extents);
-  badge_width = MIN (card->width, ceil (extents.x_advance) + 20.0);
-  badge_height = MIN (card->height, 30.0);
-  baseline = card->y + (badge_height - extents.height) / 2.0 -
-             extents.y_bearing;
+  label = &expo->labels[workspace_index];
+  badge_width = MIN (card->width, label->width + 16.0);
+  badge_height = MIN (card->height, label->height + 8.0);
 
   cairo_set_source_rgba (cr, 0.04, 0.05, 0.07, 0.72);
   cairo_rectangle (cr, card->x, card->y, badge_width, badge_height);
   cairo_fill (cr);
   cairo_set_source_rgba (cr, 1.0, 1.0, 1.0, 0.94);
-  cairo_move_to (cr, card->x + 10, baseline);
-  cairo_show_text (cr, label);
+  cairo_move_to (cr, card->x + 8, card->y + 4);
+  pango_cairo_show_layout (cr, label->layout);
 }
 
 static void
@@ -908,28 +909,25 @@ draw_workspace (MetaWorkspaceExpo *expo,
       link = link->next;
     }
 
-  draw_workspace_label (cr, workspace_index, &card);
+  draw_workspace_label (expo, cr, workspace_index, &card);
   cairo_restore (cr);
 
-  if (workspace_index == expo->current_workspace)
-    {
-      cairo_set_line_width (cr, 2.0);
-      cairo_set_source_rgba (cr, 0.36, 0.66, 1.0, 0.95);
-      cairo_rectangle (cr, card.x + 1, card.y + 1,
-                       card.width - 2, card.height - 2);
-      cairo_stroke (cr);
-    }
+  cairo_set_line_width (cr, 1.0);
+  cairo_set_source_rgb (cr, 1.0, 1.0, 1.0);
+  cairo_rectangle (cr, card.x + 0.5, card.y + 0.5,
+                   card.width - 1, card.height - 1);
+  cairo_stroke (cr);
 
   if (workspace_index == expo->selected_workspace || drop_target)
     {
-      cairo_set_line_width (cr, drop_target ? 6.0 : 4.0);
-      cairo_set_source_rgba (cr,
-                             drop_target ? 0.95 : 0.72,
-                             drop_target ? 0.70 : 0.85,
-                             drop_target ? 0.22 : 1.0,
-                             1.0);
-      cairo_rectangle (cr, card.x - 3, card.y - 3,
-                       card.width + 6, card.height + 6);
+      double outline_width = drop_target ? 3.0 : 2.0;
+      double inset = outline_width / 2.0;
+
+      cairo_set_line_width (cr, outline_width);
+      cairo_set_source_rgb (cr, 1.0, 1.0, 1.0);
+      cairo_rectangle (cr, card.x + inset, card.y + inset,
+                       card.width - outline_width,
+                       card.height - outline_width);
       cairo_stroke (cr);
     }
 }
@@ -1012,7 +1010,6 @@ meta_workspace_expo_new (MetaScreen *screen)
   expo->screen = screen;
   expo->n_workspaces = meta_screen_get_n_workspaces (screen);
   current_workspace = meta_workspace_index (screen->active_workspace);
-  expo->current_workspace = current_workspace;
   expo->selected_workspace = current_workspace;
   expo->pressed_workspace = -1;
   expo->drop_workspace = -1;
@@ -1083,6 +1080,24 @@ G_GNUC_END_IGNORE_DEPRECATIONS
                                               &expo->cards[workspace_index]);
     }
 
+  expo->labels = g_new0 (MetaWorkspaceExpoLabel, expo->n_workspaces);
+  for (cell = 0; cell < expo->n_workspaces; cell++)
+    {
+      const char *name = meta_prefs_get_workspace_name (cell);
+
+      expo->labels[cell].layout = gtk_widget_create_pango_layout (
+        expo->drawing_area, NULL);
+      pango_layout_set_markup (expo->labels[cell].layout, name, -1);
+      pango_layout_set_ellipsize (expo->labels[cell].layout,
+                                  PANGO_ELLIPSIZE_END);
+      pango_layout_set_width (expo->labels[cell].layout,
+                              MAX (1, expo->cards[cell].width - 16) *
+                              PANGO_SCALE);
+      pango_layout_get_pixel_size (expo->labels[cell].layout,
+                                   &expo->labels[cell].width,
+                                   &expo->labels[cell].height);
+    }
+
   card_pixel_width = CLAMP (
     (int) ceil (expo->layout.card_width * expo->scale),
     EXPO_MIN_WINDOW_SIZE, EXPO_MAX_SNAPSHOT_WIDTH);
@@ -1129,12 +1144,20 @@ G_GNUC_END_IGNORE_DEPRECATIONS
 void
 meta_workspace_expo_free (MetaWorkspaceExpo *expo)
 {
+  int i;
+
   if (expo == NULL)
     return;
 
   if (expo->redraw_tick_id != 0 && expo->drawing_area != NULL)
     gtk_widget_remove_tick_callback (expo->drawing_area,
                                      expo->redraw_tick_id);
+  if (expo->labels != NULL)
+    {
+      for (i = 0; i < expo->n_workspaces; i++)
+        g_clear_object (&expo->labels[i].layout);
+      g_free (expo->labels);
+    }
   if (expo->window != NULL)
     gtk_widget_destroy (expo->window);
   g_list_free_full (expo->windows, workspace_expo_window_free);
