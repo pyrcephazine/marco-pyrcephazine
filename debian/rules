@@ -3,7 +3,7 @@
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
 %:
-	dh $@ --buildsystem=meson
+	dh $@ --buildsystem=meson --without autoreconf
 
 override_dh_auto_configure:
 	dh_auto_configure --buildsystem=meson -- -Dverbose-mode=true
