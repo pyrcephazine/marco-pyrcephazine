@@ -1,0 +1,11 @@
+/build-local/
+/dist/
+/obj-*/
+/debian/.debhelper/
+/debian/debhelper-build-stamp
+/debian/files
+/debian/*.substvars
+/debian/libmarco-dev/
+/debian/libmarco-private2/
+/debian/marco/
+/debian/marco-common/

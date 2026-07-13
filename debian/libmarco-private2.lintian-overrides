@@ -1,0 +1,2 @@
+# Marco deliberately terminates the process for unrecoverable internal errors.
+libmarco-private2: exit-in-shared-library [usr/lib/*/libmarco-private.so.2.*]

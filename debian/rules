@@ -1,0 +1,20 @@
+#!/usr/bin/make -f
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+%:
+	dh $@ --buildsystem=meson
+
+override_dh_auto_configure:
+	dh_auto_configure --buildsystem=meson -- -Dverbose-mode=true
+
+override_dh_auto_test:
+	# The legacy wm-tester programs require a live X server or command-line
+	# arguments; the self-contained Workspace Expo layout test is CI-safe.
+	dh_auto_test --buildsystem=meson -- workspace-expo-layout
+
+override_dh_installchangelogs:
+	dh_installchangelogs NEWS
+
+override_dh_missing:
+	dh_missing --fail-missing

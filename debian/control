@@ -1,0 +1,100 @@
+Source: marco-pyrcephazine
+Section: x11
+Priority: optional
+Maintainer: Pierce Zhang <143103585+polyethylsaurus@users.noreply.github.com>
+Build-Depends:
+ debhelper-compat (= 13),
+ gettext,
+ libcanberra-gtk3-dev,
+ libglib2.0-dev (>= 2.58.0),
+ libgtk-3-dev (>= 3.22.0),
+ libgtop2-dev,
+ libice-dev,
+ libpango1.0-dev,
+ libsm-dev,
+ libstartup-notification0-dev (>= 0.7),
+ libx11-dev,
+ libxcomposite-dev (>= 1:0.3),
+ libxcursor-dev,
+ libxdamage-dev,
+ libxext-dev,
+ libxfixes-dev,
+ libxinerama-dev,
+ libxpresent-dev,
+ libxrandr-dev,
+ libxrender-dev,
+ libxres-dev (>= 2:1.2.0),
+ meson (>= 0.47.0),
+ ninja-build,
+ pkgconf,
+ zenity
+Standards-Version: 4.7.2
+Rules-Requires-Root: no
+Homepage: https://github.com/pyrcephazine/marco-pyrcephazine
+Vcs-Browser: https://github.com/pyrcephazine/marco-pyrcephazine
+Vcs-Git: https://github.com/pyrcephazine/marco-pyrcephazine.git
+
+Package: marco
+Architecture: any
+Depends:
+ libmarco-private2 (= ${binary:Version}),
+ marco-common (= ${source:Version}),
+ mate-desktop-common (>= 1.24),
+ zenity,
+ ${misc:Depends},
+ ${shlibs:Depends}
+Breaks: mate-window-manager (<= 1.0.0-2)
+Provides: x-window-manager
+Description: Pyrcephazine fork of the Marco window manager for MATE
+ Marco is a lightweight GTK window manager developed for the MATE desktop.
+ This fork adds a configurable Select size menu and a full-screen Workspace
+ Expo for switching workspaces and organizing windows.
+ .
+ This package contains the Marco executables.
+
+Package: marco-common
+Architecture: all
+Depends: ${misc:Depends}
+Breaks: mate-window-manager (<= 1.0.0-2)
+Description: Pyrcephazine fork of Marco (architecture-independent files)
+ Marco is a lightweight GTK window manager developed for the MATE desktop.
+ This fork adds a configurable Select size menu and a full-screen Workspace
+ Expo for switching workspaces and organizing windows.
+ .
+ This package contains schemas, translations, themes, and other shared data.
+
+Package: libmarco-private2
+Section: libs
+Architecture: any
+Multi-Arch: same
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends}
+Breaks:
+ libmarco,
+ libmarco-private0,
+ libmarco-private1,
+ mate-window-manager (<= 1.0.0-2)
+Replaces:
+ libmarco,
+ libmarco-private0,
+ libmarco-private1
+Description: Pyrcephazine fork of Marco (private library)
+ Marco is a lightweight GTK window manager developed for the MATE desktop.
+ .
+ This package contains Marco's private shared library.
+
+Package: libmarco-dev
+Section: libdevel
+Architecture: any
+Multi-Arch: same
+Depends:
+ libmarco-private2 (= ${binary:Version}),
+ libgtk-3-dev,
+ ${misc:Depends}
+Breaks: mate-window-manager (<= 1.0.0-2)
+Description: Pyrcephazine fork of Marco (development files)
+ Marco is a lightweight GTK window manager developed for the MATE desktop.
+ .
+ This package contains headers, the unversioned library link, and pkg-config
+ metadata for developing against Marco's private library.

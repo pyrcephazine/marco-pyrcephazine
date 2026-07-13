@@ -1,0 +1,53 @@
+name: Build Debian packages
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-debs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Debian 13 amd64
+    runs-on: ubuntu-24.04
+    container: debian:13-slim
+    steps:
+      - name: Install bootstrap tools
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
+            build-essential ca-certificates devscripts equivs git lintian xz-utils
+
+      - name: Check out the source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Install package build dependencies
+        run: >-
+          mk-build-deps --install --remove
+          --tool "apt-get --yes --no-install-recommends"
+          debian/control
+
+      - name: Build and validate release-shaped artifacts
+        run: |
+          debian_version="$(dpkg-parsechangelog -S Version)"
+          release_tag="v${debian_version/+/-}"
+          git tag --force "$release_tag" HEAD
+          ./packaging/build-release-artifacts.sh "$release_tag" "$GITHUB_WORKSPACE/dist"
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: debian-packages
+          path: dist/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

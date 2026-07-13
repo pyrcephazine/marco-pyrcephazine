@@ -3,7 +3,30 @@ Marco for pyrcephazine
 
 `marco-pyrcephazine` is a fork of Marco. It adds a couple of features I find useful.
 
-Build:
+Install a release package (recommended)
+---
+
+Native packages for Debian 13 amd64 are published on the
+[GitHub Releases page](https://github.com/pyrcephazine/marco-pyrcephazine/releases/latest).
+Download the three runtime `.deb` files from one release into the same
+directory, then install them together:
+
+```sh
+sudo apt install ./libmarco-private2_*_amd64.deb ./marco-common_*_all.deb ./marco_*_amd64.deb
+```
+
+The optional `libmarco-dev` package contains the development headers and
+pkg-config metadata. Verify downloads with the release's `SHA256SUMS` file.
+
+If `--install-mate` from the source installer was used previously, first run
+`sudo ninja -C build-local uninstall`, remove
+`/etc/ld.so.conf.d/marco-pyrcephazine.conf`, rebuild the `/usr/local` GLib
+schema cache with `sudo glib-compile-schemas /usr/local/share/glib-2.0/schemas`,
+and run `sudo ldconfig`. Otherwise
+the old `/usr/local/bin/marco` takes precedence over the packaged binary.
+
+Build from source
+---
 
 ```sh
 ./install-marco-pyrcephazine.sh

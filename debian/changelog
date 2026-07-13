@@ -1,0 +1,6 @@
+marco-pyrcephazine (1.26.2+pyrcephazine.1) trixie; urgency=medium
+
+  * Publish the Pyrcephazine Marco fork as native Debian packages.
+  * Include the Select size menu and Workspace Expo changes.
+
+ -- Pierce Zhang <143103585+polyethylsaurus@users.noreply.github.com>  Sun, 12 Jul 2026 22:27:38 -0700
