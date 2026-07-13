@@ -37,6 +37,7 @@ jobs:
           debian/control
 
       - name: Build and validate release-shaped artifacts
+        shell: bash
         run: |
           debian_version="$(dpkg-parsechangelog -S Version)"
           release_tag="v${debian_version/+/-}"
