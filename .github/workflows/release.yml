@@ -39,6 +39,9 @@ jobs:
           fetch-depth: 0
           ref: ${{ env.RELEASE_TAG }}
 
+      - name: Trust the container checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Install package build dependencies
         run: >-
           mk-build-deps --install --remove
